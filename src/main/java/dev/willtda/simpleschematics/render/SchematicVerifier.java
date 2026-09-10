@@ -73,9 +73,20 @@ public final class SchematicVerifier {
         }
     }
 
+    /**
+     * The master switch in the settings would otherwise let this report itself
+     * on while nothing appeared, so asking for the highlight here turns that
+     * switch back on rather than lying about the result.
+     *
+     * @return whether the highlight is actually going to draw
+     */
     public boolean toggle() {
+        if (!enabled && !SSConfig.INSTANCE.highlightMismatches.get()) {
+            SSConfig.INSTANCE.highlightMismatches.set(true);
+            SSConfig.SPEC.save();
+        }
         setEnabled(!enabled);
-        return enabled;
+        return isEnabled();
     }
 
     public void clear() {

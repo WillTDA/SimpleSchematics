@@ -81,7 +81,12 @@ public final class InputHandler {
 
         if (Keybinds.MENU.isActiveAndMatches(pressed)) {
             onMenuKey(mc, event.getAction());
-            swallow(mc, pressed);
+            // Anything else bound to this key keeps its press unless we are
+            // claiming it, which is the escape hatch for a minimap on the same
+            // key. Chord keys below are always taken, or M and T opens chat.
+            if (SSConfig.INSTANCE.menuKeyBlocksOtherMods.get()) {
+                swallow(mc, pressed);
+            }
             return;
         }
 
@@ -271,9 +276,15 @@ public final class InputHandler {
         if (mc.player == null) {
             return;
         }
-        if (event.isUseItem() && mc.hitResult instanceof BlockHitResult hit
-                && hit.getType() == HitResult.Type.BLOCK) {
-            lastUsedBlock = hit.getBlockPos();
+        if (event.isUseItem()) {
+            // Clicking anything that is not a block clears it rather than
+            // leaving it set, so a villager opened straight after a chest
+            // cannot have its trades recorded into that chest's bank.
+            lastUsedBlock = mc.hitResult instanceof BlockHitResult hit
+                    && hit.getType() == HitResult.Type.BLOCK
+                    ? hit.getBlockPos().immutable()
+                    : null;
+            lastUsedAge = 0;
         }
         if (!STATE.isEnabled() || !STATE.isHoldingTool()) {
             return;
@@ -357,6 +368,17 @@ public final class InputHandler {
      * recognised once its screen is up.
      */
     private static BlockPos lastUsedBlock;
+    private static int lastUsedAge;
+
+    /**
+     * How long that position survives with no screen up.
+     *
+     * <p>A container screen never arrives in the tick that asked for it. The
+     * click goes to the server and the screen comes back, which is at least a
+     * round trip away, so on any real connection there is always at least one
+     * tick where the click has happened and no screen is open yet.</p>
+     */
+    private static final int USE_GRACE_TICKS = 20;
 
     public static BlockPos lastUsedBlock() {
         return lastUsedBlock;
@@ -560,10 +582,16 @@ public final class InputHandler {
             return;
         }
 
-        // Only meaningful for as long as the screen that click opened is up.
-        // Left set, it would make the next screen you open look like that block.
+        // Only meaningful for as long as the screen that click opened is up,
+        // plus the wait for it to arrive. Clearing on the first screenless tick
+        // threw the position away before the chest could open, so the bank had
+        // nothing to record against and a banked chest never kept its contents.
         if (mc.screen == null) {
-            lastUsedBlock = null;
+            if (++lastUsedAge > USE_GRACE_TICKS) {
+                lastUsedBlock = null;
+            }
+        } else {
+            lastUsedAge = 0;
         }
 
         // The chord keys are handled the moment they arrive. Anything still
@@ -682,12 +710,8 @@ public final class InputHandler {
             Feedback.error(Component.translatable("simpleschematics.feedback.resource_needs_target"));
             return;
         }
-        boolean visible = !STATE.resourceListVisible();
-        STATE.setResourceListVisible(visible);
-        if (visible) {
-            ResourceListManager.INSTANCE.refreshNow();
-        }
-        Feedback.state(Component.translatable("simpleschematics.feedback.resource_list"), visible);
+        Feedback.state(Component.translatable("simpleschematics.feedback.resource_list"),
+                STATE.toggleResourceList());
     }
 
     /** Bare presses of a chord key mean nothing, so they never reach a tick. */

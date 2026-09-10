@@ -1,7 +1,10 @@
 package dev.willtda.simpleschematics.config;
 
 import dev.willtda.simpleschematics.SimpleSchematics;
+import dev.willtda.simpleschematics.client.ClientState;
 import dev.willtda.simpleschematics.client.Feedback;
+import dev.willtda.simpleschematics.render.SchematicVerifier;
+import dev.willtda.simpleschematics.render.ShaderPackCompat;
 import dev.willtda.simpleschematics.render.WorldRenderer;
 import dev.willtda.simpleschematics.util.DataPaths;
 import dev.willtda.simpleschematics.util.DataTransfer;
@@ -20,6 +23,7 @@ import net.minecraftforge.common.ForgeConfigSpec;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 /**
  * All of the settings in one scrolling list.
@@ -43,7 +47,13 @@ public final class ConfigScreen extends Screen {
         this.parent = parent;
     }
 
-    private record Row(String labelKey, AbstractWidget widget, boolean heading) {
+    /**
+     * A row of the list. {@code usable} is how a row that depends on the live
+     * state says it cannot do anything right now, and is asked every frame
+     * because the mode and the selected placement can both change underneath
+     * an open screen.
+     */
+    private record Row(String labelKey, AbstractWidget widget, boolean heading, BooleanSupplier usable) {
     }
 
     private int contentWidth() {
@@ -87,12 +97,39 @@ public final class ConfigScreen extends Screen {
         int fieldWidth = Math.max(36, w / 2 - 8);
         int x = contentX() + w - fieldWidth;
 
+        ClientState live = ClientState.INSTANCE;
+        heading("simpleschematics.config.section.toggles");
+        // Switching the mod off greys out everything below it, so the rows are
+        // rebuilt rather than left explaining themselves out of date.
+        liveToggle("simpleschematics.config.modEnabled", x, fieldWidth,
+                live::isEnabled, () -> {
+                    live.toggleEnabled();
+                    rebuildWidgets();
+                },
+                "simpleschematics.tip.live.mod", null, null);
+        modeRow("simpleschematics.config.mode", x, fieldWidth);
+        liveToggle("simpleschematics.config.renderHolograms", x, fieldWidth,
+                live::renderHolograms, live::toggleRenderHolograms,
+                "simpleschematics.tip.live.holograms", live::isEnabled, "simpleschematics.tip.live.off");
+        liveToggle("simpleschematics.config.resourceListVisible", x, fieldWidth,
+                live::resourceListVisible, live::toggleResourceList,
+                "simpleschematics.tip.live.resource_list",
+                () -> live.isEnabled() && live.targetSchematicKey() != null,
+                live.isEnabled()
+                        ? "simpleschematics.tip.live.resource_list.none"
+                        : "simpleschematics.tip.live.off");
+        liveToggle("simpleschematics.config.highlightVisible", x, fieldWidth,
+                SchematicVerifier.INSTANCE::isEnabled, SchematicVerifier.INSTANCE::toggle,
+                "simpleschematics.tip.live.highlight", live::isEnabled, "simpleschematics.tip.live.off");
+
         heading("simpleschematics.config.section.general");
         text("simpleschematics.config.toolItem", x, fieldWidth, c.toolItem);
         toggle("simpleschematics.config.enabledOnLaunch", x, fieldWidth, c.enabledOnLaunch);
         toggle("simpleschematics.config.toolRequiredForHotkeys", x, fieldWidth, c.toolRequiredForHotkeys);
         toggle("simpleschematics.config.actionBarFeedback", x, fieldWidth, c.actionBarFeedback);
         toggle("simpleschematics.config.invertScroll", x, fieldWidth, c.invertScroll);
+        toggle("simpleschematics.config.menuKeyBlocksOtherMods", x, fieldWidth, c.menuKeyBlocksOtherMods,
+                "simpleschematics.tip.menu_key");
         intSlider("simpleschematics.config.maxSelectionReach", x, fieldWidth, c.maxSelectionReach, 8, 512);
         text("simpleschematics.config.dataDirectory", x, fieldWidth, c.dataDirectory);
 
@@ -136,6 +173,10 @@ public final class ConfigScreen extends Screen {
         doubleSlider("simpleschematics.config.layerScrollVolume", x, fieldWidth, c.layerScrollVolume, 0.0, 1.0);
         toggle("simpleschematics.config.snapPlacementToGrid", x, fieldWidth, c.snapPlacementToGrid);
         toggle("simpleschematics.config.autoSelectLookedAt", x, fieldWidth, c.autoSelectLookedAt);
+        choice("simpleschematics.config.shaderPackCompat", x, fieldWidth, c.shaderPackCompat,
+                ShaderPackCompat.Mode.values(), ShaderPackCompat.shaderModPresent()
+                        ? "simpleschematics.tip.shader_pack"
+                        : "simpleschematics.tip.shader_pack.none");
 
         heading("simpleschematics.config.section.highlight");
         toggle("simpleschematics.config.highlightMismatches", x, fieldWidth, c.highlightMismatches);
@@ -150,11 +191,11 @@ public final class ConfigScreen extends Screen {
 
         heading("simpleschematics.config.section.resource_list");
         toggle("simpleschematics.config.resourceListEnabled", x, fieldWidth, c.resourceListEnabled);
-        anchor("simpleschematics.config.resourceListAnchor", x, fieldWidth, c.resourceListAnchor);
+        choice("simpleschematics.config.resourceListAnchor", x, fieldWidth, c.resourceListAnchor, SSConfig.Anchor.values());
         intSlider("simpleschematics.config.resourceListOffsetX", x, fieldWidth, c.resourceListOffsetX, 0, 200);
         intSlider("simpleschematics.config.resourceListOffsetY", x, fieldWidth, c.resourceListOffsetY, 0, 200);
         doubleSlider("simpleschematics.config.resourceListScale", x, fieldWidth, c.resourceListScale, 0.4, 2.0);
-        intSlider("simpleschematics.config.resourceListWidth", x, fieldWidth, c.resourceListWidth, 90, 400);
+        intSlider("simpleschematics.config.resourceListMaxWidth", x, fieldWidth, c.resourceListMaxWidth, 120, 500);
         intSlider("simpleschematics.config.resourceListMaxRows", x, fieldWidth, c.resourceListMaxRows, 1, 40);
         doubleSlider("simpleschematics.config.resourceListBackgroundOpacity", x, fieldWidth,
                 c.resourceListBackgroundOpacity, 0.0, 1.0);
@@ -196,26 +237,73 @@ public final class ConfigScreen extends Screen {
     // ---- row builders -----------------------------------------------------
 
     private void heading(String key) {
-        rows.add(new Row(key, null, true));
+        rows.add(new Row(key, null, true, null));
     }
 
     private void toggle(String key, int x, int width, ForgeConfigSpec.BooleanValue value) {
+        toggle(key, x, width, value, null);
+    }
+
+    private void toggle(String key, int x, int width, ForgeConfigSpec.BooleanValue value, String tipKey) {
         Button button = Button.builder(state(value.get()), b -> {
             value.set(!value.get());
             SSConfig.SPEC.save();
             b.setMessage(state(value.get()));
         }).bounds(x, 0, width, 20).build();
-        rows.add(new Row(key, addWidget(button), false));
+        if (tipKey != null) {
+            button.setTooltip(Tooltip.create(Component.translatable(tipKey)));
+        }
+        rows.add(new Row(key, addWidget(button), false, null));
     }
 
-    private void anchor(String key, int x, int width, ForgeConfigSpec.EnumValue<SSConfig.Anchor> value) {
+    /**
+     * A toggle over live session state rather than a stored setting. These are
+     * the things that otherwise only answer to a chord, so the label is read
+     * back from the state after every click, and a row that the state cannot
+     * take right now greys out and says what it is waiting for.
+     */
+    private void liveToggle(String key, int x, int width, BooleanSupplier get, Runnable flip,
+                            String tipKey, BooleanSupplier usable, String blockedKey) {
+        Button button = Button.builder(state(get.getAsBoolean()), b -> {
+            flip.run();
+            b.setMessage(state(get.getAsBoolean()));
+        }).bounds(x, 0, width, 20).build();
+        boolean ready = usable == null || usable.getAsBoolean();
+        button.setTooltip(Tooltip.create(Component.translatable(ready ? tipKey : blockedKey)));
+        rows.add(new Row(key, addWidget(button), false, usable));
+    }
+
+    /** The one live row that is not a yes or no, so it cycles rather than flips. */
+    private void modeRow(String key, int x, int width) {
+        ClientState live = ClientState.INSTANCE;
+        Button button = Button.builder(live.mode().plainLabel(), b -> {
+            live.cycleMode();
+            b.setMessage(live.mode().plainLabel());
+        }).bounds(x, 0, width, 20).build();
+        button.setTooltip(Tooltip.create(Component.translatable(live.isEnabled()
+                ? "simpleschematics.tip.live.mode"
+                : "simpleschematics.tip.live.off")));
+        rows.add(new Row(key, addWidget(button), false, live::isEnabled));
+    }
+
+    private <E extends Enum<E>> void choice(String key, int x, int width,
+                                            ForgeConfigSpec.EnumValue<E> value, E[] all) {
+        choice(key, x, width, value, all, null);
+    }
+
+    /** Steps through the values of an enum setting, one click at a time. */
+    private <E extends Enum<E>> void choice(String key, int x, int width,
+                                            ForgeConfigSpec.EnumValue<E> value, E[] all, String tipKey) {
         Button button = Button.builder(Component.literal(pretty(value.get().name())), b -> {
-            SSConfig.Anchor[] all = SSConfig.Anchor.values();
             value.set(all[(value.get().ordinal() + 1) % all.length]);
             SSConfig.SPEC.save();
             b.setMessage(Component.literal(pretty(value.get().name())));
+            WorldRenderer.invalidateAll();
         }).bounds(x, 0, width, 20).build();
-        rows.add(new Row(key, addWidget(button), false));
+        if (tipKey != null) {
+            button.setTooltip(Tooltip.create(Component.translatable(tipKey)));
+        }
+        rows.add(new Row(key, addWidget(button), false, null));
     }
 
     private void text(String key, int x, int width, ForgeConfigSpec.ConfigValue<String> value) {
@@ -226,7 +314,7 @@ public final class ConfigScreen extends Screen {
             value.set(v);
             SSConfig.SPEC.save();
         });
-        rows.add(new Row(key, addWidget(box), false));
+        rows.add(new Row(key, addWidget(box), false, null));
     }
 
     private void intSlider(String key, int x, int width, ForgeConfigSpec.IntValue cfg, int min, int max) {
@@ -244,7 +332,7 @@ public final class ConfigScreen extends Screen {
                 SSConfig.SPEC.save();
             }
         };
-        rows.add(new Row(key, addWidget(slider), false));
+        rows.add(new Row(key, addWidget(slider), false, null));
     }
 
     private void doubleSlider(String key, int x, int width, ForgeConfigSpec.DoubleValue cfg,
@@ -263,7 +351,7 @@ public final class ConfigScreen extends Screen {
                 SSConfig.SPEC.save();
             }
         };
-        rows.add(new Row(key, addWidget(slider), false));
+        rows.add(new Row(key, addWidget(slider), false, null));
     }
 
     private void action(String key, int x, int width, String buttonKey, Runnable action) {
@@ -274,7 +362,7 @@ public final class ConfigScreen extends Screen {
                 SimpleSchematics.LOG.error("A config action failed", e);
             }
         }).bounds(x, 0, width, 20).build();
-        rows.add(new Row(key, addWidget(button), false));
+        rows.add(new Row(key, addWidget(button), false, null));
     }
 
     private <T extends AbstractWidget> T addWidget(T widget) {
@@ -323,7 +411,8 @@ public final class ConfigScreen extends Screen {
             int y = top + i * ROW_HEIGHT - scroll;
             row.widget().setY(y + 2);
             row.widget().visible = y + ROW_HEIGHT > top && y < bottom;
-            row.widget().active = y + 2 >= top && y + 22 <= bottom;
+            row.widget().active = y + 2 >= top && y + 22 <= bottom
+                    && (row.usable() == null || row.usable().getAsBoolean());
         }
 
         graphics.drawCenteredString(this.font, this.title, this.width / 2, 14, 0xFFFFFFFF);

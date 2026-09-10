@@ -73,6 +73,12 @@ public final class WorldRenderer {
         if (mc.level == null || mc.player == null || !state.isEnabled() || mc.options.hideGui) {
             return;
         }
+        // A shader pack draws the world again from the sun to build its shadow
+        // map, and this stage fires for that pass as well. A ghost that is not
+        // really there should not lay a shadow across the ground.
+        if (ShaderPackCompat.renderingShadowPass()) {
+            return;
+        }
 
         Vec3 camera = event.getCamera().getPosition();
         PoseStack pose = event.getPoseStack();

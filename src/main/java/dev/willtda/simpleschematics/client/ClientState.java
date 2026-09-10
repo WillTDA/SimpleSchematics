@@ -3,6 +3,7 @@ package dev.willtda.simpleschematics.client;
 import dev.willtda.simpleschematics.config.SSConfig;
 import dev.willtda.simpleschematics.placement.Placement;
 import dev.willtda.simpleschematics.placement.PlacementManager;
+import dev.willtda.simpleschematics.resource.ResourceListManager;
 import dev.willtda.simpleschematics.schematic.Schematic;
 import dev.willtda.simpleschematics.schematic.SchematicLibrary;
 import net.minecraft.client.Minecraft;
@@ -278,6 +279,29 @@ public final class ClientState {
     public boolean resourceListVisible() {
         Placement placement = pendingSchematicKey == null ? PlacementManager.INSTANCE.selected() : null;
         return placement != null ? placement.resourceList() : resourceListVisible;
+    }
+
+    /**
+     * Switches the corner list on or off for whatever you are working on.
+     *
+     * <p>The settings carry a master switch of their own, and leaving that off
+     * used to be the one way to ask for the list, be told it was on, and see
+     * nothing. Asking for it here turns that switch back on rather than
+     * reporting a state the screen does not agree with.</p>
+     *
+     * @return the state it landed on, so the caller can announce it
+     */
+    public boolean toggleResourceList() {
+        boolean visible = !resourceListVisible();
+        setResourceListVisible(visible);
+        if (visible) {
+            if (!SSConfig.INSTANCE.resourceListEnabled.get()) {
+                SSConfig.INSTANCE.resourceListEnabled.set(true);
+                SSConfig.SPEC.save();
+            }
+            ResourceListManager.INSTANCE.refreshNow();
+        }
+        return visible;
     }
 
     public void setResourceListVisible(boolean visible) {

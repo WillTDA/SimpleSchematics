@@ -28,6 +28,7 @@ public final class SSConfig {
     public final ForgeConfigSpec.BooleanValue toolRequiredForHotkeys;
     public final ForgeConfigSpec.BooleanValue actionBarFeedback;
     public final ForgeConfigSpec.BooleanValue invertScroll;
+    public final ForgeConfigSpec.BooleanValue menuKeyBlocksOtherMods;
     public final ForgeConfigSpec.IntValue maxSelectionReach;
     public final ForgeConfigSpec.ConfigValue<String> dataDirectory;
     /** Remembered rather than chosen, so the mod comes back the way you left it. */
@@ -66,6 +67,7 @@ public final class SSConfig {
     public final ForgeConfigSpec.BooleanValue layerScrollSound;
     public final ForgeConfigSpec.DoubleValue layerScrollVolume;
     public final ForgeConfigSpec.BooleanValue snapPlacementToGrid;
+    public final ForgeConfigSpec.EnumValue<dev.willtda.simpleschematics.render.ShaderPackCompat.Mode> shaderPackCompat;
     public final ForgeConfigSpec.BooleanValue autoSelectLookedAt;
 
     // ---- resource list ----------------------------------------------------
@@ -74,7 +76,7 @@ public final class SSConfig {
     public final ForgeConfigSpec.IntValue resourceListOffsetX;
     public final ForgeConfigSpec.IntValue resourceListOffsetY;
     public final ForgeConfigSpec.DoubleValue resourceListScale;
-    public final ForgeConfigSpec.IntValue resourceListWidth;
+    public final ForgeConfigSpec.IntValue resourceListMaxWidth;
     public final ForgeConfigSpec.IntValue resourceListMaxRows;
     public final ForgeConfigSpec.DoubleValue resourceListBackgroundOpacity;
     public final ForgeConfigSpec.BooleanValue removeCollectedItems;
@@ -99,6 +101,10 @@ public final class SSConfig {
                 .define("actionBarFeedback", true);
         invertScroll = b.comment("Reverse the scroll direction for every Simple Schematics shortcut")
                 .define("invertScroll", false);
+        menuKeyBlocksOtherMods = b.comment("Take the menu key away from anything else bound to it, so holding it as a shortcut prefix does nothing else.",
+                        "Switch this off if a minimap or another mod shares the key and you would rather keep that.",
+                        "The chords go through vanilla again at that point, so rebind the Simple Schematics menu key under Controls as well")
+                .define("menuKeyBlocksOtherMods", true);
         maxSelectionReach = b.comment("How far away, in blocks, you can set a selection corner")
                 .defineInRange("maxSelectionReach", 128, 8, 512);
         lastMode = b.comment("The mode you were last in. Set for you, not meant to be edited by hand")
@@ -177,6 +183,11 @@ public final class SSConfig {
                 .define("autoSelectLookedAt", false);
         snapPlacementToGrid = b.comment("Snap a new placement to the block you are looking at rather than free floating")
                 .define("snapPlacementToGrid", true);
+        shaderPackCompat = b.comment("How to draw the holograms while a shader pack is running.",
+                        "Iris and Oculus replace the level render and ignore this mod's own shader, which leaves the ghosts invisible,",
+                        "so AUTO switches to a plain vanilla render type whenever a pack is loaded. The near fade and the distance",
+                        "fade are lost on that path; opacity is not. ALWAYS forces it, NEVER keeps this mod's shader whatever is installed")
+                .defineEnum("shaderPackCompat", dev.willtda.simpleschematics.render.ShaderPackCompat.Mode.AUTO);
         b.pop();
 
         b.comment("Resource list").push("resource_list");
@@ -190,8 +201,9 @@ public final class SSConfig {
                 .defineInRange("resourceListOffsetY", 4, 0, 400);
         resourceListScale = b.comment("Size of the list relative to the rest of the interface")
                 .defineInRange("resourceListScale", 1.0D, 0.4D, 2.0D);
-        resourceListWidth = b.comment("Width of the list in pixels before scaling")
-                .defineInRange("resourceListWidth", 150, 90, 400);
+        resourceListMaxWidth = b.comment("The widest the list may get, in pixels before scaling.",
+                        "The panel is measured from the names it is drawing and only trims them once it reaches this")
+                .defineInRange("resourceListMaxWidth", 240, 120, 500);
         resourceListMaxRows = b.comment("How many item rows to show at once")
                 .defineInRange("resourceListMaxRows", 10, 1, 40);
         resourceListBackgroundOpacity = b.comment("How dark the panel behind the list is")

@@ -156,16 +156,19 @@ public final class MaterialResolver {
         return null;
     }
 
-    /** Formats a total as stacks plus a remainder, for example 3,214 (50 stacks + 14). */
+    /**
+     * Formats a total as stacks plus a remainder, for example 3,214 as 50× + 14.
+     *
+     * <p>Written with a multiplication sign rather than the word, because this
+     * sits beside the total in a column that is already tight and the word was
+     * squeezing the item name out of the row.</p>
+     */
     public static String stackBreakdown(int total, int stackSize) {
         if (stackSize <= 1 || total < stackSize) {
             return "";
         }
         int stacks = total / stackSize;
         int remainder = total % stackSize;
-        if (remainder == 0) {
-            return stacks + (stacks == 1 ? " stack" : " stacks");
-        }
-        return stacks + (stacks == 1 ? " stack + " : " stacks + ") + remainder;
+        return remainder == 0 ? stacks + "×" : stacks + "× + " + remainder;
     }
 }

@@ -169,7 +169,11 @@ public final class BakedSchematic implements AutoCloseable {
     /** Library previews write depth; in-world ghosts only read the real world's depth. */
     public void draw(PoseStack pose, Matrix4f projection, float alpha, boolean depthWrite) {
         ShaderInstance shader = HologramShader.get();
-        if (closed || shader == null || !Float.isFinite(alpha) || alpha <= 0.0F) return;
+        // The library preview is a GUI draw, which no shader pack touches, so
+        // only the world pass ever needs the compatible path.
+        boolean shaded = !depthWrite && ShaderPackCompat.shaderPackInUse();
+        if (closed || !Float.isFinite(alpha) || alpha <= 0.0F) return;
+        if (shader == null && !shaded) return;
         // GUI vertices normally receive RenderSystem's separate model-view
         // translation when a buffer is flushed. Direct VBO draws need it too.
         Matrix4f base = depthWrite
@@ -203,19 +207,64 @@ public final class BakedSchematic implements AutoCloseable {
                 .sorted(Comparator.comparingDouble(Section::distanceSquared).reversed()).toList();
         if (ordered.isEmpty()) return;
 
-        try (GhostRenderState ignored = new GhostRenderState(Math.min(1.0F, alpha), depthWrite)) {
-            shader.safeGetUniform("WorldPass").set(depthWrite ? 0.0F : 1.0F);
-            shader.safeGetUniform("NearFade").set(SSConfig.INSTANCE.hologramNearFade.get() ? 1.0F : 0.0F);
-            shader.safeGetUniform("FadeStart").set(0.35F);
-            shader.safeGetUniform("FadeEnd").set(SSConfig.INSTANCE.hologramFadeDistance.get().floatValue());
-            // No vanilla render-type setup may run here: solid/cutout types
-            // disable blending or write depth and would undo the ghost pass.
-            for (Section section : ordered) {
-                section.buffer.bind();
-                section.buffer.drawWithShader(new Matrix4f(base).translate(section.x, section.y, section.z), projection, shader);
+        float ghostAlpha = Math.min(1.0F, alpha);
+        try (GhostRenderState ignored = new GhostRenderState(ghostAlpha, depthWrite)) {
+            if (shaded) {
+                drawShaded(ordered, base, projection, ghostAlpha);
+            } else {
+                shader.safeGetUniform("WorldPass").set(depthWrite ? 0.0F : 1.0F);
+                shader.safeGetUniform("NearFade").set(SSConfig.INSTANCE.hologramNearFade.get() ? 1.0F : 0.0F);
+                shader.safeGetUniform("FadeStart").set(0.35F);
+                shader.safeGetUniform("FadeEnd").set(SSConfig.INSTANCE.hologramFadeDistance.get().floatValue());
+                // No vanilla render-type setup may run here: solid/cutout types
+                // disable blending or write depth and would undo the ghost pass.
+                for (Section section : ordered) {
+                    section.buffer.bind();
+                    section.buffer.drawWithShader(new Matrix4f(base).translate(section.x, section.y, section.z), projection, shader);
+                }
             }
         } finally {
             VertexBuffer.unbind();
+        }
+    }
+
+    /**
+     * The path taken while a shader pack owns the level render.
+     *
+     * <p>Going through a vanilla render type is the whole point: Iris and
+     * Oculus patch the programs behind the render types the same way they patch
+     * terrain, so the geometry reaches their gbuffer and survives the passes
+     * that follow. This mod's own shader is ignored inside that pipeline, which
+     * is why the ghosts were not there at all.</p>
+     *
+     * <p>The near fade and the distance fade live in that shader and are lost
+     * here. Opacity is not: it rides on ColorModulator, which every vanilla
+     * shader honours. Depth writing stays off and the polygon offset stays on,
+     * because the render type sets neither the way a ghost needs them.</p>
+     */
+    private void drawShaded(List<Section> ordered, Matrix4f base, Matrix4f projection, float alpha) {
+        RenderType type = RenderType.translucent();
+        type.setupRenderState();
+        try {
+            ShaderInstance shader = RenderSystem.getShader();
+            if (shader == null) {
+                return;
+            }
+            RenderSystem.depthMask(false);
+            RenderSystem.enableBlend();
+            RenderSystem.defaultBlendFunc();
+            RenderSystem.disableCull();
+            RenderSystem.enablePolygonOffset();
+            RenderSystem.polygonOffset(-1.0F, -2.0F);
+            RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, alpha);
+            for (Section section : ordered) {
+                section.buffer.bind();
+                section.buffer.drawWithShader(
+                        new Matrix4f(base).translate(section.x, section.y, section.z), projection, shader);
+            }
+        } finally {
+            RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+            type.clearRenderState();
         }
     }
 

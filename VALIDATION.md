@@ -19,6 +19,20 @@ revision, not a verified installable release.
 - Checked the two language files have matching keys and UK English text, with no
   em dashes and no missing static translation keys used by the source.
 
+## Shader pack compatibility
+
+- Confirmed against the real artefacts that `ShaderPackCompat` asks for a class
+  that exists. Downloaded Oculus `mc1.20.1-1.8.0`, `1.7.0` and `1.6.15a` and
+  found `net/irisshaders/iris/api/v0/IrisApi.class` in all three, not the older
+  `net.coderbot` package.
+- Ran `scripts/IrisLookupCheck` against each of those jars. It asserts
+  `getInstance` is static and no-arg and returns the API type, and that
+  `isShaderPackInUse` is an instance method returning boolean. All three pass,
+  and the absent-class branch is exercised by the second candidate name.
+- **Not verified in game.** Whether the fallback draw actually puts the ghosts
+  on screen under a loaded shader pack has not been observed. That needs a
+  client with Oculus and a pack enabled, which has not been run here.
+
 ## Build limitation
 
 The Gradle wrapper distribution is not cached here and its download failed with
