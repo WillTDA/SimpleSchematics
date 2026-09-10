@@ -1,9 +1,39 @@
-.gradle/
-build/
-dist/
-run/
-out/
+# The patterns below carry no leading slash, so they match at any depth rather
+# than only at the root. That is what lets one "run" entry cover the server run
+# directory sitting inside it. A leading slash is used only where a directory is
+# meant to match at the root and nowhere else.
+
+# eclipse
+bin
+*.launch
+.settings
+.metadata
+.classpath
+.project
+
+# idea
+out
+*.ipr
+*.iws
 *.iml
-.idea/
-.eclipse/
-bin/
+.idea
+
+# vscode
+# settings.json pins a JDK path that only exists on one machine, so it is kept
+# locally rather than shared.
+.vscode
+
+# gradle
+build
+.gradle
+
+# other
+eclipse
+run
+mcmodsrepo
+
+# `gradlew dist` output, the jar to hand out. A build artifact, not a source.
+/dist/
+
+# Files from Forge MDK
+forge*changelog.txt
