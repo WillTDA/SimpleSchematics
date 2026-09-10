@@ -1,0 +1,42 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="${mod_licence}"
+issueTrackerURL="https://github.com/WillTDA/SimpleSchematics/issues"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+displayURL="https://github.com/WillTDA/SimpleSchematics"
+logoFile="icon.png"
+logoBlur=false
+credits="Inspired by Litematica by masa. Built independently, no shared code."
+authors="${mod_authors}"
+# Client only. The server never needs this mod installed.
+displayTest="IGNORE_SERVER_VERSION"
+description='''
+Guided building made easy.
+
+Save, share and rebuild structures without the faff.
+
+Scan a region with one click each for the two corners, save it with a name, then
+pick it back out of a visual library and drop it into the world as a hologram.
+A resource list tracks exactly what you still need to gather, and everything you
+create lives in one portable folder you can copy between computers.
+
+Client side only, so it works on any server.
+'''
+
+[[dependencies.${mod_id}]]
+    modId="forge"
+    mandatory=true
+    versionRange="[47,)"
+    ordering="NONE"
+    side="CLIENT"
+
+[[dependencies.${mod_id}]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="[1.20.1,1.21)"
+    ordering="NONE"
+    side="CLIENT"

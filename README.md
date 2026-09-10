@@ -1,0 +1,144 @@
+# Simple Schematics
+
+**Guided building made easy.**
+
+A deliberately small schematic mod for **Minecraft 1.20.1 / Forge 47.3.0**, by WillTDA.
+
+Client side only. It is never required on the server, so you can use it on any vanilla or modded server you can already join.
+
+## Why it exists
+
+Litematica and its Forge ports do the job, but the everyday parts are awkward: saving a region takes several menus, the hologram fights you, and your placements and material list vanish every time you relog. This mod keeps the same three ideas (scan a region, show it as a hologram, tell you what you need) and tries to make each one boring and reliable.
+
+## Building it
+
+You need a JDK 17 on your PATH. Then:
+
+```
+./gradlew build
+```
+
+The jar lands in `build/libs/`. Drop it in your `mods` folder.
+
+For a development client, run `./gradlew runClient`. On Windows, use `gradlew.bat build` or `gradlew.bat runClient`.
+
+This revision is supplied as source. See `VALIDATION.md` for the checks completed and the in-game checks still required.
+
+## How you use it
+
+Hold the activation item (a stick by default, changeable in the config) and the controls wake up.
+
+**M** is the way in. On its own it opens the library. Held down it becomes a prefix, the way Litematica does it, and the rest of the mod hangs off it:
+
+| Keys | What it does |
+| --- | --- |
+| **M** | Open the library |
+| **M** + **P** | Open the placements |
+| **M** + **L** | Open the resource list |
+| **M** + **O** | Show or hide the resource list overlay |
+| **M** + **H** | Show or hide the mismatch highlight |
+| **M** + **R** | Show or hide the holograms |
+| **M** + **T** | Switch the mod on or off |
+| **M** + **C** | Open the settings |
+
+None of the second column does anything on its own, so the mod costs you exactly one key. All of it is rebindable in the vanilla Controls screen.
+
+**Ctrl and scroll** swaps between the two modes. Whichever one you were last in is where you come back the next time you log in. **Ctrl, Shift and scroll** switches the mod on or off, and unlike everything else that one works while the mod is off, so long as the activation item is in your hand.
+
+### Scan mode
+
+- Left click a block to set the start corner.
+- Right click a block to set the end corner. If you play with your mouse buttons switched, **Swap the Scan Corner Buttons** in the settings puts them back the way round you expect.
+- The two corners are different colours and a box is drawn between them.
+- Press **Enter** to save. You are asked for a name, an optional description, and whether to include entities such as armour stands, and container contents.
+- Press **\\** to clear the selection.
+
+### Build mode
+
+- Press **M** for the library. Each schematic gets a live 3D preview on a slow turntable. Drag it to spin it yourself, flick it and let go to send it coasting, scroll to zoom, right click to put it back. Leave it alone for a second and a half and it picks the turntable back up.
+- Choose one, then point where you want it and press your normal **use block** key. Whatever you have that bound to is what works.
+- **.** rotates and **,** mirrors the selected placement.
+- **Shift and scroll**, or **Page Up** and **Page Down**, walks the hologram up one layer at a time, with a note block hi-hat that rises in pitch as you climb. It stops at the top. Scrolling back down past the bottom returns the whole build, so there is no separate layer mode to switch on.
+
+### Checking your work
+
+Press **M** and **H** to switch the mismatch highlight on or off. While it is on, the mod quietly compares the build against the world a slice at a time and marks what is out of place:
+
+- **Red** means there is a block there but it is the wrong one.
+- **Amber** means there is a block there that the schematic does not want at all.
+- Blocks you have already placed correctly stop being drawn as hologram, so what is left standing is exactly what you still have to do.
+
+Toggling it on reports the totals above the hotbar. The highlight respects layer mode, so stepping through layers shows you only that layer's mistakes.
+
+The comparison checks block type and placement properties such as facing, axis and slab half. Expected states follow the selected rotation and mirror. Connections, redstone power and waterlogging are ignored unless **Match the full block state** is on.
+
+The comparison loops rather than listening for block updates, so it repairs itself after a chunk reload or a server correction. It costs a fixed budget of blocks per tick, which you can lower in the config if a very large build costs you frames.
+
+### Hologram appearance
+
+**Outline every block** draws an edge around each block in the hologram so the grid stays readable. The edges are grown a hair to keep them off the ghost surfaces, and only blocks with a face you can actually see, within a configurable distance of you, are drawn.
+
+Open **Mods > Simple Schematics > Config**. New installations use 35% opacity, fading within two blocks of the camera, and no outer hologram box. The Scan target marker is off by default. Scan selection boxes appear only while holding the tool, and F1 hides the mod's world overlays.
+
+Existing opacity and outline preferences are retained. Choose **Reset hologram appearance** in the Build section to apply the new defaults. You can then adjust **Hologram opacity**, **Fade nearby ghosts** and **Fade distance (blocks)** separately. Lowering opacity to zero hides the block ghosts; outlines and mismatch highlights have their own switches.
+
+Ghost faces use one transparent shader, sort from the camera, keep the world's depth test, and do not write into the world's depth buffer. A small depth bias reduces flicker against real blocks without shifting the schematic. Hidden blocks and filtered layers are also removed from face culling so exposed edges remain visible.
+
+### Resource list
+
+- **M** and **O** shows or hides the overlay for whichever build you are working on. That choice is remembered per placement and written out with it, so a half finished build still has its list waiting the next time you log in.
+- It sits in the bottom right by default, refreshes five times a second, and drops rows the moment you have gathered them.
+- Sorted with the biggest shortfall first, shown as `1,234 (19 stacks + 18)`.
+- Items disappear from the list as you collect them. That includes your inventory, offhand, the stack on your cursor, your ender chest, and any chest you currently have open.
+- **Shift and right click a chest** with the stick out to hand it to the build you have selected. Banked chests are boxed in amber while you build, and whatever is inside counts towards the list even when the chest is shut. Shift and right click again to take it back off. Both halves of a double chest count as one.
+- Left click a row to tick it off, right click to clear that, and shift and scroll to correct a total by hand. Hold ctrl while scrolling to move in stacks.
+- Position, size, width and row count are all in the config. It defaults to the bottom right and shrinks itself to fit rather than running off the screen, at every GUI scale.
+
+## Your data
+
+Everything lives in one folder, `.minecraft/simpleschematics/` unless you point `dataDirectory` somewhere else in the config. Put it in OneDrive or Dropbox and your laptop and your PC share the same schematics, placements and progress.
+
+```
+simpleschematics/
+  schematics/       your .sschem files, and any .litematic you drop in
+  placements.json   where each schematic sits, per world and per server
+  resource-lists/   how far through each build you are
+```
+
+Placements are keyed by world or server address and written as soon as they change, so relogging does not lose them. The config screen also has **Export** and **Import** buttons that move the whole lot as a zip, and you can drag a `.litematic`, `.sschem` or `.zip` straight onto that screen.
+
+## Roadmap
+
+### Print mode
+
+A third mode alongside Scan and Build. You place a schematic as normal, confirm at a prompt, and the mod lays it out for you block by block, drawing from your inventory and any chests you have banked, or straight from the creative inventory when you are in creative.
+
+Shape of it:
+
+- **Bottom up, layer by layer.** Each layer is finished before the next starts, so nothing is ever placed against thin air.
+- **Entity-like things last.** Item frames, paintings, armour stands, banners on posts and anything else that hangs off a block it needs to already exist. Same for gravity blocks and torches, which want their support in place first.
+- **Slick placement.** A short animation per block and the block's own placement sound, paced rather than instant, so it reads as being built instead of appearing.
+- **Materials come from the same pool the resource list already counts:** inventory, offhand, banked chests. In creative it can pull whatever it needs directly.
+
+Things to work out before writing any of it:
+
+- **This is a client sending place packets, not a server-side build command.** On a multiplayer server it is indistinguishable from an auto-build hack, and most anti-cheat will treat it that way. It should almost certainly be singleplayer and creative only by default, with anything else behind a setting that says plainly what it is. Worth deciding early, because it shapes the whole feature.
+- **Reach and line of sight.** The server validates both. The printer either has to place only what is genuinely reachable from where you are standing and let you walk the build, or move the player itself, which is a much bigger and much more detectable thing to do.
+- **Block states are not just block types.** Stairs, slabs, doors, chests, observers and rotatable blocks all derive their state from where you stood, which face you clicked and whether you were sneaking. Getting a wall of stairs facing the right way is most of the work, and some states cannot be reached by placement at all.
+- **Failure has to be visible.** Out of materials, blocked by an existing block, or a state that could not be produced. The mismatch highlight already exists and is the natural place to show what was skipped.
+
+## Litematica files
+
+`.litematic` files load directly. Multi region schematics are flattened into one volume. The embedded thumbnail is reused for the library gallery when there is one. **Convert** in the library rewrites a litematic as a native `.sschem`, which loads faster.
+
+## Two things worth knowing
+
+**Container contents on servers.** A client side mod can only see inside a chest you have actually opened. Scanning a room full of unopened chests records the chests but not what is in them. The save dialogue says so at the time.
+
+**Rendering limits.** Ghosts currently render baked block models. Fluids, block entity renderers such as chests and signs, and saved entities are not drawn by this renderer. Large builds appear a few sections at a time. Overlapping transparent surfaces may still show sorting artefacts, especially where multiple placements overlap. Shader packs and alternative renderers need testing in Minecraft.
+
+## Licence
+
+Apache License 2.0. See `LICENSE`.
+
+The `.litematic` reader was written from a description of the format. No code from Litematica or any of its ports is used here, and this project is not affiliated with those projects or with Mojang.

@@ -1,0 +1,497 @@
+package dev.willtda.simpleschematics.resource;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import dev.willtda.simpleschematics.SimpleSchematics;
+import dev.willtda.simpleschematics.client.ClientState;
+import dev.willtda.simpleschematics.client.InputHandler;
+import dev.willtda.simpleschematics.placement.Placement;
+import dev.willtda.simpleschematics.placement.PlacementManager;
+import dev.willtda.simpleschematics.config.SSConfig;
+import dev.willtda.simpleschematics.schematic.Schematic;
+import dev.willtda.simpleschematics.util.DataPaths;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.state.BlockState;
+
+import java.io.Reader;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * Works out what a build needs, what you are carrying, and what is left.
+ *
+ * <p>Progress is written to disk against the schematic, so ticking something
+ * off survives a relog and travels with the rest of your data folder.</p>
+ */
+public final class ResourceListManager {
+
+    public static final ResourceListManager INSTANCE = new ResourceListManager();
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    /**
+     * Five times a second. The list is meant to read as live while you empty a
+     * shulker into a chest, and a recount is a walk over one inventory.
+     */
+    private static final int REFRESH_INTERVAL_TICKS = 4;
+
+    /** One line of the list. */
+    public record Row(Item item, int required, int available, int manual, boolean ticked) {
+        public int have() {
+            return Math.min(required, available + manual);
+        }
+
+        public int missing() {
+            return Math.max(0, required - available - manual);
+        }
+
+        public boolean complete() {
+            return ticked || missing() == 0;
+        }
+    }
+
+    /** Everything saved against one schematic. */
+    private static final class Progress {
+        final Map<Item, Integer> manual = new HashMap<>();
+        final Set<Item> ticked = new HashSet<>();
+        boolean dirty;
+    }
+
+    private final Map<String, Map<Item, Integer>> requiredCache = new HashMap<>();
+    private final Map<String, Progress> progressCache = new HashMap<>();
+    private final Map<Item, Integer> available = new HashMap<>();
+
+    private String activeKey;
+    private List<Row> rows = new ArrayList<>();
+    private int tickCounter;
+
+    private ResourceListManager() {
+    }
+
+    // ---- lifecycle --------------------------------------------------------
+
+    public void tick() {
+        String key = ClientState.INSTANCE.targetSchematicKey();
+        if (key == null) {
+            if (activeKey != null) {
+                activeKey = null;
+                rows = new ArrayList<>();
+            }
+            return;
+        }
+        if (!key.equals(activeKey)) {
+            activeKey = key;
+            refreshNow();
+            return;
+        }
+        if (++tickCounter >= REFRESH_INTERVAL_TICKS) {
+            tickCounter = 0;
+            snapshotOpenBank();
+            refreshNow();
+        }
+    }
+
+    public void refreshNow() {
+        activeKey = ClientState.INSTANCE.targetSchematicKey();
+        if (activeKey == null) {
+            rows = new ArrayList<>();
+            return;
+        }
+        Schematic schematic = ClientState.INSTANCE.targetSchematic();
+        if (schematic == null) {
+            rows = new ArrayList<>();
+            return;
+        }
+        Map<Item, Integer> required = requiredFor(activeKey, schematic);
+        countAvailable();
+        Progress progress = progressFor(activeKey);
+
+        List<Row> built = new ArrayList<>(required.size());
+        for (Map.Entry<Item, Integer> entry : required.entrySet()) {
+            Item item = entry.getKey();
+            int need = entry.getValue();
+            int have = available.getOrDefault(item, 0);
+            int manual = progress.manual.getOrDefault(item, 0);
+            built.add(new Row(item, need, have, manual, progress.ticked.contains(item)));
+        }
+
+        // biggest job first, which is what you want when planning a trip to the mine
+        built.sort(Comparator
+                .comparingInt((Row r) -> r.complete() ? 1 : 0)
+                .thenComparing(Comparator.comparingInt(Row::missing).reversed())
+                .thenComparing(Comparator.comparingInt(Row::required).reversed())
+                .thenComparing(r -> itemName(r.item())));
+        rows = built;
+
+        if (progress.dirty) {
+            saveProgress(activeKey, progress);
+        }
+    }
+
+    public List<Row> rows() {
+        return rows;
+    }
+
+    /** Rows after the hide and auto remove settings have been applied. */
+    public List<Row> visibleRows() {
+        boolean hideComplete = SSConfig.INSTANCE.hideCompletedRows.get()
+                || SSConfig.INSTANCE.removeCollectedItems.get();
+        if (!hideComplete) {
+            return rows;
+        }
+        List<Row> filtered = new ArrayList<>(rows.size());
+        for (Row row : rows) {
+            if (!row.complete()) {
+                filtered.add(row);
+            }
+        }
+        return filtered;
+    }
+
+    public boolean hasTarget() {
+        return activeKey != null && !rows.isEmpty();
+    }
+
+    public int totalMissing() {
+        int total = 0;
+        for (Row row : rows) {
+            total += row.missing();
+        }
+        return total;
+    }
+
+    public int totalRequired() {
+        int total = 0;
+        for (Row row : rows) {
+            total += row.required();
+        }
+        return total;
+    }
+
+    // ---- editing ----------------------------------------------------------
+
+    public void toggleTick(Item item) {
+        if (activeKey == null) {
+            return;
+        }
+        Progress progress = progressFor(activeKey);
+        if (!progress.ticked.remove(item)) {
+            progress.ticked.add(item);
+        }
+        progress.dirty = true;
+        saveProgress(activeKey, progress);
+        refreshNow();
+    }
+
+    public void adjustManual(Item item, int delta) {
+        if (activeKey == null) {
+            return;
+        }
+        Progress progress = progressFor(activeKey);
+        int next = Math.max(0, progress.manual.getOrDefault(item, 0) + delta);
+        if (next == 0) {
+            progress.manual.remove(item);
+        } else {
+            progress.manual.put(item, next);
+        }
+        progress.dirty = true;
+        saveProgress(activeKey, progress);
+        refreshNow();
+    }
+
+    public void setManual(Item item, int value) {
+        if (activeKey == null) {
+            return;
+        }
+        Progress progress = progressFor(activeKey);
+        if (value <= 0) {
+            progress.manual.remove(item);
+        } else {
+            progress.manual.put(item, value);
+        }
+        progress.dirty = true;
+        saveProgress(activeKey, progress);
+        refreshNow();
+    }
+
+    /** Whether anything has been ticked off or corrected by hand yet. */
+    public boolean hasProgress() {
+        if (activeKey == null) {
+            return false;
+        }
+        Progress progress = progressCache.get(activeKey);
+        return progress != null && (!progress.manual.isEmpty() || !progress.ticked.isEmpty());
+    }
+
+    public void resetProgress() {
+        if (activeKey == null) {
+            return;
+        }
+        Progress progress = progressFor(activeKey);
+        progress.manual.clear();
+        progress.ticked.clear();
+        progress.dirty = true;
+        saveProgress(activeKey, progress);
+        refreshNow();
+    }
+
+    /**
+     * Copies what is in the open container into the bank it belongs to.
+     *
+     * <p>A client can only see inside a container while its screen is up, so
+     * this is the one moment the contents can be recorded. It replaces the
+     * stored contents rather than adding to them, which means opening the same
+     * chest again simply corrects the figure instead of doubling it.</p>
+     */
+    public void snapshotOpenBank() {
+        Minecraft mc = Minecraft.getInstance();
+        if (!(mc.screen instanceof AbstractContainerScreen<?> screen) || mc.level == null) {
+            return;
+        }
+        Placement placement = PlacementManager.INSTANCE.selected();
+        BlockPos opened = InputHandler.lastUsedBlock();
+        if (placement == null || opened == null) {
+            return;
+        }
+        BlockPos pos = Banks.canonical(mc.level, opened);
+        if (!placement.isBank(pos)) {
+            return;
+        }
+
+        Map<String, Integer> counted = new LinkedHashMap<>();
+        var menu = screen.getMenu();
+        // The last thirty six slots are always the player's own inventory.
+        int cutoff = Math.max(0, menu.slots.size() - 36);
+        for (int i = 0; i < cutoff; i++) {
+            ItemStack stack = menu.slots.get(i).getItem();
+            if (!stack.isEmpty()) {
+                counted.merge(idOf(stack.getItem()), stack.getCount(), Integer::sum);
+            }
+        }
+        if (!counted.equals(placement.banks().get(pos))) {
+            placement.setBankContents(pos, counted);
+            PlacementManager.INSTANCE.markDirty();
+            refreshNow();
+        }
+    }
+
+    // ---- counting ---------------------------------------------------------
+
+    private void countAvailable() {
+        available.clear();
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer player = mc.player;
+        if (player == null) {
+            return;
+        }
+
+        for (ItemStack stack : player.getInventory().items) {
+            add(stack);
+        }
+        for (ItemStack stack : player.getInventory().offhand) {
+            add(stack);
+        }
+        add(player.containerMenu.getCarried());
+
+        if (SSConfig.INSTANCE.countEnderChest.get()) {
+            var ender = player.getEnderChestInventory();
+            for (int i = 0; i < ender.getContainerSize(); i++) {
+                add(ender.getItem(i));
+            }
+        }
+
+        if (SSConfig.INSTANCE.countOpenContainers.get()
+                && mc.screen instanceof AbstractContainerScreen<?> screen) {
+            var menu = screen.getMenu();
+            int cutoff = Math.max(0, menu.slots.size() - 36);
+            for (int i = 0; i < cutoff; i++) {
+                add(menu.slots.get(i).getItem());
+            }
+        }
+
+        countBanks();
+    }
+
+    /**
+     * Everything sitting in the chests marked for this build.
+     *
+     * <p>The chest that happens to be open is already counted above, so its
+     * bank is skipped here rather than counted a second time.</p>
+     */
+    private void countBanks() {
+        Placement placement = PlacementManager.INSTANCE.selected();
+        if (placement == null || placement.banks().isEmpty()) {
+            return;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        BlockPos open = null;
+        if (SSConfig.INSTANCE.countOpenContainers.get()
+                && mc.screen instanceof AbstractContainerScreen<?>
+                && mc.level != null && InputHandler.lastUsedBlock() != null) {
+            open = Banks.canonical(mc.level, InputHandler.lastUsedBlock());
+        }
+        for (Map.Entry<BlockPos, Map<String, Integer>> bank : placement.banks().entrySet()) {
+            if (bank.getKey().equals(open)) {
+                continue;
+            }
+            for (Map.Entry<String, Integer> entry : bank.getValue().entrySet()) {
+                Item item = itemFromId(entry.getKey());
+                if (item != null && item != Items.AIR) {
+                    available.merge(item, entry.getValue(), Integer::sum);
+                }
+            }
+        }
+    }
+
+    private void add(ItemStack stack) {
+        if (stack != null && !stack.isEmpty() && stack.getItem() != Items.AIR) {
+            available.merge(stack.getItem(), stack.getCount(), Integer::sum);
+        }
+    }
+
+    private Map<Item, Integer> requiredFor(String key, Schematic schematic) {
+        Map<Item, Integer> cached = requiredCache.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        Map<Item, Integer> totals = new HashMap<>();
+        BlockState[] palette = schematic.palette();
+        MaterialResolver.Cost[] costs = new MaterialResolver.Cost[palette.length];
+        for (int i = 0; i < palette.length; i++) {
+            costs[i] = MaterialResolver.costOf(palette[i]);
+        }
+        for (int y = 0; y < schematic.height(); y++) {
+            for (int z = 0; z < schematic.length(); z++) {
+                for (int x = 0; x < schematic.width(); x++) {
+                    BlockState state = schematic.getBlockState(x, y, z);
+                    if (state.isAir()) {
+                        continue;
+                    }
+                    MaterialResolver.Cost cost = MaterialResolver.costOf(state);
+                    if (!cost.isNothing()) {
+                        totals.merge(cost.item(), cost.amount(), Integer::sum);
+                    }
+                }
+            }
+        }
+        requiredCache.put(key, totals);
+        return totals;
+    }
+
+    public void invalidate(String key) {
+        requiredCache.remove(key);
+        progressCache.remove(key);
+        if (key.equals(activeKey)) {
+            refreshNow();
+        }
+    }
+
+    public void invalidateAll() {
+        requiredCache.clear();
+        progressCache.clear();
+        rows = new ArrayList<>();
+        activeKey = null;
+    }
+
+    // ---- storage ----------------------------------------------------------
+
+    private Progress progressFor(String key) {
+        return progressCache.computeIfAbsent(key, this::loadProgress);
+    }
+
+    private Path progressFile(String key) {
+        return DataPaths.resourceLists().resolve(DataPaths.sanitise(key) + ".json");
+    }
+
+    private Progress loadProgress(String key) {
+        Progress progress = new Progress();
+        Path file = progressFile(key);
+        if (!Files.exists(file)) {
+            return progress;
+        }
+        try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            JsonElement parsed = JsonParser.parseReader(reader);
+            if (!parsed.isJsonObject()) {
+                return progress;
+            }
+            JsonObject root = parsed.getAsJsonObject();
+            if (root.has("stored")) {
+                for (Map.Entry<String, JsonElement> entry : root.getAsJsonObject("stored").entrySet()) {
+                    Item item = itemFromId(entry.getKey());
+                    if (item != null) {
+                        progress.manual.put(item, entry.getValue().getAsInt());
+                    }
+                }
+            }
+            if (root.has("ticked")) {
+                for (JsonElement element : root.getAsJsonArray("ticked")) {
+                    Item item = itemFromId(element.getAsString());
+                    if (item != null) {
+                        progress.ticked.add(item);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            SimpleSchematics.LOG.warn("Could not read the saved progress for {}", key, e);
+        }
+        return progress;
+    }
+
+    private void saveProgress(String key, Progress progress) {
+        progress.dirty = false;
+        JsonObject root = new JsonObject();
+        root.addProperty("schematic", key);
+        JsonObject stored = new JsonObject();
+        for (Map.Entry<Item, Integer> entry : progress.manual.entrySet()) {
+            stored.addProperty(idOf(entry.getKey()), entry.getValue());
+        }
+        root.add("stored", stored);
+        var ticked = new com.google.gson.JsonArray();
+        for (Item item : progress.ticked) {
+            ticked.add(idOf(item));
+        }
+        root.add("ticked", ticked);
+
+        try (Writer writer = Files.newBufferedWriter(progressFile(key), StandardCharsets.UTF_8)) {
+            GSON.toJson(root, writer);
+        } catch (Exception e) {
+            SimpleSchematics.LOG.error("Could not save the progress for {}", key, e);
+        }
+    }
+
+    private static String idOf(Item item) {
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
+        return id == null ? "minecraft:air" : id.toString();
+    }
+
+    private static Item itemFromId(String id) {
+        ResourceLocation location = ResourceLocation.tryParse(id);
+        if (location == null || !BuiltInRegistries.ITEM.containsKey(location)) {
+            return null;
+        }
+        return BuiltInRegistries.ITEM.get(location);
+    }
+
+    public static String itemName(Item item) {
+        return item.getDescription().getString();
+    }
+}

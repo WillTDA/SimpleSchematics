@@ -1,0 +1,18 @@
+{
+  // Gradle 8.1.1 (the wrapper version required by ForgeGradle 6 / Forge 1.20.1)
+  // cannot run on Java 21. Without this, the VS Code Gradle extension launches
+  // Gradle with the Red Hat Java extension's bundled JRE 21 and fails project
+  // sync with "Unsupported class file major version 65". Point it at JDK 17.
+  "java.import.gradle.java.home": "C:\\Program Files\\Java\\jdk-17",
+
+  // Compile the project sources against Java 17 to match the Gradle toolchain.
+  "java.configuration.runtimes": [
+    {
+      "name": "JavaSE-17",
+      "path": "C:\\Program Files\\Java\\jdk-17",
+      "default": true
+    }
+  ],
+
+  "java.import.gradle.wrapper.enabled": true
+}

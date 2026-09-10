@@ -1,0 +1,13 @@
+Simple Schematics
+Copyright 2026 WillTDA
+
+Licensed under the Apache License, Version 2.0. See the LICENSE file.
+
+This product includes software developed by WillTDA.
+
+Simple Schematics can read the .litematic container format so that existing
+Litematica and Forgematica libraries can be imported. The reader in
+`schematic/LitematicImporter.java` and `schematic/LitematicBitArray.java` was
+written from a description of the on disk layout. No source code from
+Litematica or any related project is included or derived here, and this mod is
+not affiliated with or endorsed by those projects or by Mojang Studios.

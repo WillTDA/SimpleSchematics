@@ -1,0 +1,104 @@
+buildscript {
+    repositories {
+        maven { url = 'https://maven.minecraftforge.net/' }
+        mavenCentral()
+    }
+    dependencies {
+        classpath group: 'net.minecraftforge.gradle', name: 'ForgeGradle', version: '6.0.+', changing: true
+    }
+}
+
+plugins {
+    id 'eclipse'
+    id 'idea'
+}
+apply plugin: 'net.minecraftforge.gradle'
+
+version = mod_version
+group = mod_group
+base { archivesName = mod_id }
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(17)
+}
+
+minecraft {
+    // "official" mappings keep the build self contained. If you prefer readable
+    // parameter names, swap to parchment and add the ParchmentMC maven repo.
+    mappings channel: 'official', version: minecraft_version
+
+    copyIdeResources = true
+
+    runs {
+        client {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', ''
+            property 'forge.logging.console.level', 'debug'
+            mods { "${mod_id}" { source sourceSets.main } }
+        }
+        // Simple Schematics is client only, but a server run helps verify that
+        // the mod never touches server side code paths.
+        server {
+            workingDirectory project.file('run/server')
+            property 'forge.logging.console.level', 'debug'
+            args '--nogui'
+            mods { "${mod_id}" { source sourceSets.main } }
+        }
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+}
+
+tasks.named('processResources', ProcessResources).configure {
+    var replacements = [
+            mod_id         : mod_id,
+            mod_name       : mod_name,
+            mod_version    : mod_version,
+            mod_authors    : mod_authors,
+            mod_licence    : mod_licence,
+            forge_version  : forge_version,
+            minecraft_version: minecraft_version
+    ]
+    inputs.properties replacements
+    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+        expand replacements
+    }
+}
+
+tasks.named('jar', Jar).configure {
+    manifest {
+        attributes([
+                'Specification-Title'     : mod_id,
+                'Specification-Vendor'    : mod_authors,
+                'Specification-Version'   : '1',
+                'Implementation-Title'    : mod_name,
+                'Implementation-Version'  : mod_version,
+                'Implementation-Vendor'   : mod_authors,
+                'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
+        ])
+    }
+    from('.') {
+        include 'LICENSE'
+        include 'NOTICE'
+        into 'META-INF'
+    }
+    finalizedBy 'reobfJar'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+tasks.register('dist', Copy) {
+    group = 'distribution'
+    description = 'Builds the mod and copies the final jar into the dist/ folder in the project root.'
+    dependsOn tasks.named('build')
+    from tasks.named('jar', Jar).get().archiveFile
+    into layout.projectDirectory.dir('dist')
+}
