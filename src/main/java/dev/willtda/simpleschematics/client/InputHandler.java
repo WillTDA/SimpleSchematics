@@ -21,6 +21,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -149,6 +150,11 @@ public final class InputHandler {
         } else if (chord == Keybinds.TOGGLE_RENDERING) {
             Feedback.state(Component.translatable("simpleschematics.feedback.rendering"),
                     STATE.toggleRenderHolograms());
+        } else if (chord == Keybinds.TOGGLE_BOX) {
+            boolean on = !SSConfig.INSTANCE.hologramOutline.get();
+            SSConfig.INSTANCE.hologramOutline.set(on);
+            SSConfig.SPEC.save();
+            Feedback.state(Component.translatable("simpleschematics.feedback.outline"), on);
         } else if (chord == Keybinds.HIGHLIGHT) {
             boolean on = SchematicVerifier.INSTANCE.toggle();
             Feedback.state(Component.translatable("simpleschematics.feedback.highlight"), on);
@@ -451,6 +457,64 @@ public final class InputHandler {
                 Component.literal(name), Component.literal(origin.getX() + ", " + origin.getY() + ", " + origin.getZ())));
     }
 
+    /**
+     * Selects whichever build you are looking at, when that is switched on.
+     *
+     * <p>The ray is cast against the placement boxes rather than the world, so
+     * looking at a hologram standing in open air still picks it. Off by default,
+     * because it takes the choice out of your hands.</p>
+     */
+    private static void autoSelect(Minecraft mc) {
+        if (!SSConfig.INSTANCE.autoSelectLookedAt.get() || STATE.mode() != EditMode.BUILD
+                || mc.screen != null || STATE.hasPending()) {
+            return;
+        }
+        Entity camera = mc.getCameraEntity();
+        if (camera == null) {
+            return;
+        }
+        double reach = Math.min(SSConfig.INSTANCE.maxSelectionReach.get(), 128);
+        Vec3 eye = camera.getEyePosition(1.0F);
+        Vec3 end = eye.add(camera.getViewVector(1.0F).scale(reach));
+
+        Placement best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (Placement placement : PlacementManager.INSTANCE.current()) {
+            if (!placement.visible()) {
+                continue;
+            }
+            SchematicLibrary.Entry entry = SchematicLibrary.INSTANCE.byKey(placement.schematicKey());
+            Schematic schematic = entry == null ? null : entry.get();
+            if (schematic == null) {
+                continue;
+            }
+            AABB box = placement.bounds(schematic);
+            if (box.clip(eye, end).isEmpty()) {
+                continue;
+            }
+            // Ranked by how near the build itself is, not by where the ray
+            // happens to strike it. Standing inside a large build would
+            // otherwise score it by its far wall and lose to a smaller one
+            // further away.
+            double distance = distanceSquared(box, eye);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = placement;
+            }
+        }
+        if (best != null && best != PlacementManager.INSTANCE.selected()) {
+            PlacementManager.INSTANCE.select(best);
+        }
+    }
+
+    /** Nearest point of the box to a point, and zero when the point is inside it. */
+    private static double distanceSquared(AABB box, Vec3 point) {
+        double dx = Math.max(Math.max(box.minX - point.x, 0.0D), point.x - box.maxX);
+        double dy = Math.max(Math.max(box.minY - point.y, 0.0D), point.y - box.maxY);
+        double dz = Math.max(Math.max(box.minZ - point.z, 0.0D), point.z - box.maxZ);
+        return dx * dx + dy * dy + dz * dz;
+    }
+
     /** Set when the highlight is switched on, cleared once the counts are shown. */
     private static boolean reportDiff;
 
@@ -507,6 +571,7 @@ public final class InputHandler {
             return;
         }
 
+        autoSelect(mc);
         tickVerifier(mc);
 
         // report once the first pass has actually produced something to report

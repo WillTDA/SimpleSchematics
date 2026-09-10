@@ -179,5 +179,8 @@
   "simpleschematics.feedback.bank_needs_placement": "Select a Placement First, Then the Chest Can Feed It",
   "simpleschematics.feedback.bank_added": "Chest Added to %s",
   "simpleschematics.feedback.bank_removed": "Chest No Longer Counted",
-  "simpleschematics.gui.placements_hint": "Right click a row to show or hide that build."
+  "simpleschematics.gui.placements_hint": "Right click a row to show or hide that build.",
+  "key.simpleschematics.toggle_box": "Hold Menu: Show or Hide the Outline Box",
+  "simpleschematics.feedback.outline": "Outline Box",
+  "simpleschematics.config.autoSelectLookedAt": "Select What You Look At"
 }

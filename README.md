@@ -38,6 +38,7 @@ Hold the activation item (a stick by default, changeable in the config) and the 
 | **M** + **O** | Show or hide the resource list overlay |
 | **M** + **H** | Show or hide the mismatch highlight |
 | **M** + **R** | Show or hide the holograms |
+| **M** + **B** | Show or hide the outline box |
 | **M** + **T** | Switch the mod on or off |
 | **M** + **C** | Open the settings |
 
@@ -58,7 +59,7 @@ None of the second column does anything on its own, so the mod costs you exactly
 - Press **M** for the library. Each schematic gets a live 3D preview on a slow turntable. Drag it to spin it yourself, flick it and let go to send it coasting, scroll to zoom, right click to put it back. Leave it alone for a second and a half and it picks the turntable back up.
 - Choose one, then point where you want it and press your normal **use block** key. Whatever you have that bound to is what works.
 - **.** rotates and **,** mirrors the selected placement.
-- **Shift and scroll**, or **Page Up** and **Page Down**, walks the hologram up one layer at a time, with a note block hi-hat that rises in pitch as you climb. It stops at the top. Scrolling back down past the bottom returns the whole build, so there is no separate layer mode to switch on.
+- **Shift and scroll**, or **Page Up** and **Page Down**, walks the selected build up one layer at a time, with a note block hi-hat that rises in pitch as you climb. It stops at the top, and scrolling back down past the bottom returns the whole build, so there is no separate layer mode to switch on. Only the build you have selected is sliced; every other one in the world stays whole.
 
 ### Checking your work
 
@@ -75,6 +76,8 @@ The comparison checks block type and placement properties such as facing, axis a
 The comparison loops rather than listening for block updates, so it repairs itself after a chunk reload or a server correction. It costs a fixed budget of blocks per tick, which you can lower in the config if a very large build costs you frames.
 
 ### Hologram appearance
+
+Each build gets a box around it, which you can toggle with **M** and **B**. **Select what you look at** in the settings picks whichever build you are pointing at instead of choosing one from the list, ranked by which is actually nearest you; it is off by default.
 
 **Outline every block** draws an edge around each block in the hologram so the grid stays readable. The edges are grown a hair to keep them off the ghost surfaces, and only blocks with a face you can actually see, within a configurable distance of you, are drawn.
 

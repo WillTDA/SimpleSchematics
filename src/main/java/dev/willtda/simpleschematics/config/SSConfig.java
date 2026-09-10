@@ -66,6 +66,7 @@ public final class SSConfig {
     public final ForgeConfigSpec.BooleanValue layerScrollSound;
     public final ForgeConfigSpec.DoubleValue layerScrollVolume;
     public final ForgeConfigSpec.BooleanValue snapPlacementToGrid;
+    public final ForgeConfigSpec.BooleanValue autoSelectLookedAt;
 
     // ---- resource list ----------------------------------------------------
     public final ForgeConfigSpec.BooleanValue resourceListEnabled;
@@ -130,7 +131,7 @@ public final class SSConfig {
         hologramOpacity = b.comment("How solid the hologram looks")
                 .defineInRange("hologramOpacity", 0.35D, 0.0D, 1.0D);
         hologramOutline = b.comment("Draw a box around the hologram")
-                .define("hologramOutline", false);
+                .define("hologramOutline", true);
         hologramBlockOutline = b.comment("Draw an edge around every block in the hologram, so the grid is readable")
                 .define("hologramBlockOutline", false);
         hologramBlockOutlineColour = b.comment("Colour of those block edges, as RRGGBB")
@@ -172,6 +173,8 @@ public final class SSConfig {
                 .define("layerScrollSound", true);
         layerScrollVolume = b.comment("Volume of the layer tick")
                 .defineInRange("layerScrollVolume", 0.6D, 0.0D, 1.0D);
+        autoSelectLookedAt = b.comment("Selecting whichever placement you are looking at, instead of choosing one from the list")
+                .define("autoSelectLookedAt", false);
         snapPlacementToGrid = b.comment("Snap a new placement to the block you are looking at rather than free floating")
                 .define("snapPlacementToGrid", true);
         b.pop();

@@ -11,6 +11,7 @@ import dev.willtda.simpleschematics.client.ScanSelection;
 import dev.willtda.simpleschematics.config.SSConfig;
 import dev.willtda.simpleschematics.placement.Placement;
 import dev.willtda.simpleschematics.placement.PlacementManager;
+import dev.willtda.simpleschematics.resource.Banks;
 import dev.willtda.simpleschematics.schematic.Schematic;
 import dev.willtda.simpleschematics.schematic.SchematicLibrary;
 import net.minecraft.client.Minecraft;
@@ -19,6 +20,7 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.phys.AABB;
@@ -195,7 +197,7 @@ public final class WorldRenderer {
             drawOne(pose, projection, schematic, placement.schematicKey(), placement, placement.origin(),
                     placement.rotation(), placement.mirror(), alpha, state);
 
-            drawBanks(pose, source, placement, camera);
+            drawBanks(pose, source, placement, camera, mc.level);
             drawBlockOutlines(pose, source, schematic, placement.schematicKey(), placement,
                     placement.origin(), camera, state);
             drawMismatches(pose, source, placement, camera, state);
@@ -216,11 +218,12 @@ public final class WorldRenderer {
      * turn into a light show.
      */
     private static void drawBanks(PoseStack pose, MultiBufferSource.BufferSource source,
-                                  Placement placement, Vec3 camera) {
-        if (placement.banks().isEmpty()) {
+                                  Placement placement, Vec3 camera, Level level) {
+        // Only the build you are working on shows its chests. Every build in the
+        // world boxing its own would be a light show rather than information.
+        if (placement.banks().isEmpty() || placement != PlacementManager.INSTANCE.selected()) {
             return;
         }
-        boolean selected = placement == PlacementManager.INSTANCE.selected();
         double reach = SSConfig.INSTANCE.hologramRenderDistance.get();
         double reachSq = reach * reach;
         VertexConsumer lines = source.getBuffer(RenderType.lines());
@@ -232,7 +235,7 @@ public final class WorldRenderer {
             if (dx * dx + dy * dy + dz * dz > reachSq) {
                 continue;
             }
-            lineBox(pose, lines, grow(ScanSelection.blockBox(pos)), 0xFBBF24, selected ? 0.9F : 0.3F);
+            lineBox(pose, lines, grow(Banks.boxFor(level, pos)), 0xFBBF24, 0.9F);
             drew = true;
         }
         if (drew) {
@@ -310,7 +313,7 @@ public final class WorldRenderer {
             baked.clearCorrectMask();
         }
         baked.setTintOrigin(origin);
-        applyLayerFilter(baked, schematic, state);
+        applyLayerFilter(baked, schematic, state, placement);
         baked.bakeStep();
 
         pose.pushPose();
@@ -329,13 +332,34 @@ public final class WorldRenderer {
      * schematic. When the feature is off the plain schematic key is used and
      * the sharing comes back.
      */
+    /** The key the ghost on your crosshair bakes under. */
+    private static String pendingRenderKey() {
+        String key = ClientState.INSTANCE.pendingSchematicKey();
+        return key == null ? null : key + "#pending";
+    }
+
     private static String renderKey(String schematicKey, Placement placement) {
-        if (placement != null
-                && SSConfig.INSTANCE.hideCorrectBlocks.get()
-                && SchematicVerifier.INSTANCE.isEnabled()) {
+        if (placement == null) {
+            // The ghost you are holding is sliced by the layer view and a placed
+            // copy of the same schematic is not, so it never shares their bake.
+            return schematicKey + "#pending";
+        }
+        if (SSConfig.INSTANCE.hideCorrectBlocks.get() && SchematicVerifier.INSTANCE.isEnabled()) {
+            return schematicKey + "#" + placement.id();
+        }
+        // A sliced placement no longer looks like its untouched twin, so it
+        // needs geometry of its own rather than the shared bake.
+        if (slicing(placement)) {
             return schematicKey + "#" + placement.id();
         }
         return schematicKey;
+    }
+
+    /** Whether this particular placement is the one the layer view applies to. */
+    private static boolean slicing(Placement placement) {
+        return placement != null
+                && ClientState.INSTANCE.layerView() == ClientState.LayerView.SINGLE
+                && placement == PlacementManager.INSTANCE.selected();
     }
 
     private static String baseKey(String renderKey) {
@@ -454,16 +478,17 @@ public final class WorldRenderer {
         }
     }
 
-    private static void applyLayerFilter(BakedSchematic baked, Schematic schematic, ClientState state) {
-        int min;
-        int max;
-        if (state.layerView() == ClientState.LayerView.SINGLE) {
-            min = Math.min(state.layer(), schematic.height() - 1);
-            max = min;
-        } else {
-            min = 0;
-            max = schematic.height() - 1;
-        }
+    /**
+     * Slices only the placement you have selected, or the one on your crosshair.
+     * Scrolling through the layers used to cut every build in the world at once,
+     * which is not what anybody means by it.
+     */
+    private static void applyLayerFilter(BakedSchematic baked, Schematic schematic,
+                                         ClientState state, Placement placement) {
+        boolean sliced = state.layerView() == ClientState.LayerView.SINGLE
+                && (placement == null || placement == PlacementManager.INSTANCE.selected());
+        int min = sliced ? Math.min(state.layer(), schematic.height() - 1) : 0;
+        int max = sliced ? min : schematic.height() - 1;
         baked.setLayerRange(min, max);
     }
 
@@ -474,9 +499,7 @@ public final class WorldRenderer {
         Iterator<Map.Entry<String, BakedSchematic>> it = CACHE.entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry<String, BakedSchematic> entry = it.next();
-            String base = baseKey(entry.getKey());
-            boolean used = base.equals(ClientState.INSTANCE.pendingSchematicKey())
-                    && entry.getKey().indexOf('#') < 0;
+            boolean used = entry.getKey().equals(pendingRenderKey());
             if (!used) {
                 for (Placement placement : PlacementManager.INSTANCE.current()) {
                     if (entry.getKey().equals(renderKey(placement.schematicKey(), placement))) {

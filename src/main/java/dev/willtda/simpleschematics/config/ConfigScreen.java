@@ -135,6 +135,7 @@ public final class ConfigScreen extends Screen {
         toggle("simpleschematics.config.layerScrollSound", x, fieldWidth, c.layerScrollSound);
         doubleSlider("simpleschematics.config.layerScrollVolume", x, fieldWidth, c.layerScrollVolume, 0.0, 1.0);
         toggle("simpleschematics.config.snapPlacementToGrid", x, fieldWidth, c.snapPlacementToGrid);
+        toggle("simpleschematics.config.autoSelectLookedAt", x, fieldWidth, c.autoSelectLookedAt);
 
         heading("simpleschematics.config.section.highlight");
         toggle("simpleschematics.config.highlightMismatches", x, fieldWidth, c.highlightMismatches);
