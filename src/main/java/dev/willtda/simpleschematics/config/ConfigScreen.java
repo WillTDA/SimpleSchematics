@@ -58,8 +58,21 @@ public final class ConfigScreen extends Screen {
         return 40;
     }
 
+    /**
+     * The list stops above the notice, and the notice above the buttons. All
+     * three used to share the same strip, which is why the notice read through
+     * the button row.
+     */
     private int listBottom() {
-        return this.height - 40;
+        return Math.max(listTop() + ROW_HEIGHT, noticeY() - 4);
+    }
+
+    private int buttonY() {
+        return this.height - 28;
+    }
+
+    private int noticeY() {
+        return buttonY() - 6 - this.font.lineHeight;
     }
 
     private int maxScroll() {
@@ -169,14 +182,14 @@ public final class ConfigScreen extends Screen {
         int buttonWidth = Math.min(120, contentWidth() / 2 - 4);
         addRenderableWidget(Button.builder(Component.translatable("gui.done"), b -> onClose())
                 .tooltip(Tooltip.create(Component.translatable("simpleschematics.tip.done")))
-                .bounds(this.width / 2 - buttonWidth - 2, this.height - 30, buttonWidth, 20).build());
+                .bounds(this.width / 2 - buttonWidth - 2, buttonY(), buttonWidth, 20).build());
         addRenderableWidget(Button.builder(Component.translatable("simpleschematics.config.reset_view"),
                         b -> {
                             WorldRenderer.invalidateAll();
                             notify(Component.translatable("simpleschematics.config.view_reset").getString());
                         })
                 .tooltip(Tooltip.create(Component.translatable("simpleschematics.tip.rebuild")))
-                .bounds(this.width / 2 + 2, this.height - 30, buttonWidth, 20).build());
+                .bounds(this.width / 2 + 2, buttonY(), buttonWidth, 20).build());
     }
 
     // ---- row builders -----------------------------------------------------
@@ -347,7 +360,7 @@ public final class ConfigScreen extends Screen {
 
         if (notice != null && System.currentTimeMillis() < noticeUntil) {
             graphics.drawCenteredString(this.font, this.font.plainSubstrByWidth(notice, this.width - 20),
-                    this.width / 2, bottom + 4, 0xFFFBBF24);
+                    this.width / 2, noticeY(), 0xFFFBBF24);
         }
     }
 

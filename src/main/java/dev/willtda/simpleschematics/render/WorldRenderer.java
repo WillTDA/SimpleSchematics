@@ -43,11 +43,27 @@ public final class WorldRenderer {
             MultiBufferSource.immediate(new BufferBuilder(16384));
     private static int reloadGeneration;
 
+    /**
+     * Drawn after the weather, which is the first stage that comes after the
+     * clouds.
+     *
+     * <p>Vanilla draws clouds between the particle stage and the weather stage.
+     * Anything the mod drew earlier had opaque cloud painted straight over the
+     * top of it, so a hologram against the sky looked like it was behind the
+     * weather. Drawing later means a cloud behind a ghost is blended through it
+     * rather than covering it.</p>
+     *
+     * <p>The price is that vanilla pushes the camera pose onto the render
+     * system's model view stack before the clouds and leaves it there. Immediate
+     * mode geometry would then be rotated by the camera twice, once on the CPU
+     * through the event's pose and again in the shader. Blanking the model view
+     * for the duration puts the mod back in exactly the state the earlier stage
+     * gave it. AFTER_LEVEL is no use here, because Forge hands that stage the
+     * projection pose rather than the level's camera pose.</p>
+     */
     @SubscribeEvent
     public static void onRenderLevel(RenderLevelStageEvent event) {
-        // In Forge 1.20.1 AFTER_LEVEL supplies the projection pose rather than
-        // the level's camera pose. Keep the terrain stage to preserve alignment.
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_WEATHER) {
             return;
         }
         Minecraft mc = Minecraft.getInstance();
@@ -59,6 +75,11 @@ public final class WorldRenderer {
         Vec3 camera = event.getCamera().getPosition();
         PoseStack pose = event.getPoseStack();
         Matrix4f projection = event.getProjectionMatrix();
+
+        PoseStack modelView = RenderSystem.getModelViewStack();
+        modelView.pushPose();
+        modelView.setIdentity();
+        RenderSystem.applyModelViewMatrix();
 
         pose.pushPose();
         try (GhostRenderState ignored = new GhostRenderState(1.0F, false)) {
@@ -72,6 +93,8 @@ public final class WorldRenderer {
             }
         } finally {
             pose.popPose();
+            modelView.popPose();
+            RenderSystem.applyModelViewMatrix();
         }
     }
 
