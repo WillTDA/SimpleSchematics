@@ -15,10 +15,13 @@ import dev.willtda.simpleschematics.schematic.Schematic;
 import dev.willtda.simpleschematics.util.DataPaths;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -103,9 +106,11 @@ public final class ResourceListManager {
             refreshNow();
             return;
         }
+        // Cheap, and it only writes when something actually moved. Doing it every
+        // tick means shutting a chest straight after a transfer still records it.
+        snapshotOpenBank();
         if (++tickCounter >= REFRESH_INTERVAL_TICKS) {
             tickCounter = 0;
-            snapshotOpenBank();
             refreshNow();
         }
     }
@@ -264,25 +269,19 @@ public final class ResourceListManager {
      */
     public void snapshotOpenBank() {
         Minecraft mc = Minecraft.getInstance();
-        if (!(mc.screen instanceof AbstractContainerScreen<?> screen) || mc.level == null) {
-            return;
-        }
+        LocalPlayer player = mc.player;
+        BlockPos pos = openBankPos(mc);
         Placement placement = PlacementManager.INSTANCE.selected();
-        BlockPos opened = InputHandler.lastUsedBlock();
-        if (placement == null || opened == null) {
-            return;
-        }
-        BlockPos pos = Banks.canonical(mc.level, opened);
-        if (!placement.isBank(pos)) {
+        if (pos == null || player == null || placement == null || !placement.isBank(pos)) {
             return;
         }
 
         Map<String, Integer> counted = new LinkedHashMap<>();
-        var menu = screen.getMenu();
-        // The last thirty six slots are always the player's own inventory.
-        int cutoff = Math.max(0, menu.slots.size() - 36);
-        for (int i = 0; i < cutoff; i++) {
-            ItemStack stack = menu.slots.get(i).getItem();
+        for (Slot slot : ((AbstractContainerScreen<?>) mc.screen).getMenu().slots) {
+            if (isPlayers(slot, player)) {
+                continue;
+            }
+            ItemStack stack = slot.getItem();
             if (!stack.isEmpty()) {
                 counted.merge(idOf(stack.getItem()), stack.getCount(), Integer::sum);
             }
@@ -292,6 +291,58 @@ public final class ResourceListManager {
             PlacementManager.INSTANCE.markDirty();
             refreshNow();
         }
+    }
+
+    /**
+     * The block whose container screen is open, already reduced to the half of
+     * a double chest that banks are stored under, or null.
+     *
+     * <p>It has to be a real container block, and it has to be a screen that is
+     * not your own inventory. Without both checks, opening your inventory just
+     * after closing a chest would still look like that chest was open: its bank
+     * would drop out of the count, and the snapshot would write your armour and
+     * crafting grid into it.</p>
+     */
+    private static BlockPos openBankPos(Minecraft mc) {
+        if (mc.level == null || countableScreen(mc) == null) {
+            return null;
+        }
+        BlockPos pos = InputHandler.lastUsedBlock();
+        if (pos == null || !Banks.isContainer(mc.level, pos)) {
+            return null;
+        }
+        return Banks.canonical(mc.level, pos);
+    }
+
+    /**
+     * The open container screen worth counting, or null.
+     *
+     * <p>Your own inventory is excluded because everything in it is counted
+     * directly, and the creative menu because its slots are backed by a list of
+     * every item in the game.</p>
+     */
+    private static AbstractContainerScreen<?> countableScreen(Minecraft mc) {
+        if (mc.screen instanceof InventoryScreen || mc.screen instanceof CreativeModeInventoryScreen) {
+            return null;
+        }
+        return mc.screen instanceof AbstractContainerScreen<?> screen ? screen : null;
+    }
+
+    /**
+     * Whether a slot is one the player already had counted.
+     *
+     * <p>Menus put the player's own inventory in among their slots, and the
+     * ender chest screen is backed by the very inventory the ender chest
+     * setting counts. Walking the slots and asking what each one belongs to is
+     * exact, where assuming the last thirty six slots are the player's is only
+     * true for chest shaped menus.</p>
+     */
+    private static boolean isPlayers(Slot slot, LocalPlayer player) {
+        if (slot.container == player.getInventory()) {
+            return true;
+        }
+        return SSConfig.INSTANCE.countEnderChest.get()
+                && slot.container == player.getEnderChestInventory();
     }
 
     // ---- counting ---------------------------------------------------------
@@ -310,6 +361,7 @@ public final class ResourceListManager {
         for (ItemStack stack : player.getInventory().offhand) {
             add(stack);
         }
+        // Held on the cursor, so it has already left whichever slot it came from.
         add(player.containerMenu.getCarried());
 
         if (SSConfig.INSTANCE.countEnderChest.get()) {
@@ -319,36 +371,30 @@ public final class ResourceListManager {
             }
         }
 
-        if (SSConfig.INSTANCE.countOpenContainers.get()
-                && mc.screen instanceof AbstractContainerScreen<?> screen) {
-            var menu = screen.getMenu();
-            int cutoff = Math.max(0, menu.slots.size() - 36);
-            for (int i = 0; i < cutoff; i++) {
-                add(menu.slots.get(i).getItem());
+        AbstractContainerScreen<?> screen = countableScreen(mc);
+        if (SSConfig.INSTANCE.countOpenContainers.get() && screen != null) {
+            for (Slot slot : screen.getMenu().slots) {
+                if (!isPlayers(slot, player)) {
+                    add(slot.getItem());
+                }
             }
         }
 
-        countBanks();
+        countBanks(mc);
     }
 
     /**
      * Everything sitting in the chests marked for this build.
      *
-     * <p>The chest that happens to be open is already counted above, so its
-     * bank is skipped here rather than counted a second time.</p>
+     * <p>A bank that is open on screen has just been counted slot by slot, so
+     * it is skipped here rather than counted again from its stored contents.</p>
      */
-    private void countBanks() {
+    private void countBanks(Minecraft mc) {
         Placement placement = PlacementManager.INSTANCE.selected();
         if (placement == null || placement.banks().isEmpty()) {
             return;
         }
-        Minecraft mc = Minecraft.getInstance();
-        BlockPos open = null;
-        if (SSConfig.INSTANCE.countOpenContainers.get()
-                && mc.screen instanceof AbstractContainerScreen<?>
-                && mc.level != null && InputHandler.lastUsedBlock() != null) {
-            open = Banks.canonical(mc.level, InputHandler.lastUsedBlock());
-        }
+        BlockPos open = SSConfig.INSTANCE.countOpenContainers.get() ? openBankPos(mc) : null;
         for (Map.Entry<BlockPos, Map<String, Integer>> bank : placement.banks().entrySet()) {
             if (bank.getKey().equals(open)) {
                 continue;

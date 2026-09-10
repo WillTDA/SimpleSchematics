@@ -560,6 +560,12 @@ public final class InputHandler {
             return;
         }
 
+        // Only meaningful for as long as the screen that click opened is up.
+        // Left set, it would make the next screen you open look like that block.
+        if (mc.screen == null) {
+            lastUsedBlock = null;
+        }
+
         // The chord keys are handled the moment they arrive. Anything still
         // queued here was a bare press, which is not a shortcut on its own.
         drainChords();
