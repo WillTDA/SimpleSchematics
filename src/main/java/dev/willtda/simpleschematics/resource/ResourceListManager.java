@@ -61,20 +61,26 @@ public final class ResourceListManager {
     /**
      * One line of the list.
      *
+     * <p>Ticking a row off says the item is dealt with, whatever the counting
+     * found, so a ticked row wants nothing. That has to be true here rather
+     * than only in {@link #complete()}: the total in the header is added up
+     * from {@link #missing()}, and a ticked row was still being counted there.</p>
+     *
      * @param placed what is already standing correctly in the world, which
      *               counts towards the requirement the same as anything carried
+     * @param manual the correction entered by hand, on top of what was counted
      */
     public record Row(Item item, int required, int placed, int available, int manual, boolean ticked) {
         public int have() {
-            return Math.min(required, placed + available + manual);
+            return ticked ? required : Math.min(required, placed + available + manual);
         }
 
         public int missing() {
-            return Math.max(0, required - placed - available - manual);
+            return ticked ? 0 : Math.max(0, required - placed - available - manual);
         }
 
         public boolean complete() {
-            return ticked || missing() == 0;
+            return missing() == 0;
         }
     }
 
