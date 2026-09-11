@@ -157,11 +157,14 @@ public final class MaterialResolver {
     }
 
     /**
-     * Formats a total as stacks plus a remainder, for example 3,214 as 50× + 14.
+     * Formats a total as stacks plus a remainder: 68 as 64 + 4, and 3,214 as
+     * 50 × 64 + 14.
      *
-     * <p>Written with a multiplication sign rather than the word, because this
-     * sits beside the total in a column that is already tight and the word was
-     * squeezing the item name out of the row.</p>
+     * <p>A single stack is written as the stack size on its own rather than
+     * 1 × 64, which is how anyone would say it. Exactly one stack with nothing
+     * over is left blank, because the breakdown would only repeat the total
+     * sitting next to it. The multiplication sign rather than the word keeps
+     * the figures narrow enough that the item name still has room.</p>
      */
     public static String stackBreakdown(int total, int stackSize) {
         if (stackSize <= 1 || total < stackSize) {
@@ -169,6 +172,12 @@ public final class MaterialResolver {
         }
         int stacks = total / stackSize;
         int remainder = total % stackSize;
-        return remainder == 0 ? stacks + "×" : stacks + "× + " + remainder;
+        if (stacks == 1 && remainder == 0) {
+            return "";
+        }
+        String head = stacks == 1
+                ? String.valueOf(stackSize)
+                : String.format("%,d", stacks) + " × " + stackSize;
+        return remainder == 0 ? head : head + " + " + remainder;
     }
 }

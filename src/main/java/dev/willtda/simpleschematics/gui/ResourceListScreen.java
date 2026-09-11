@@ -1,6 +1,7 @@
 package dev.willtda.simpleschematics.gui;
 
 import dev.willtda.simpleschematics.client.ClientState;
+import dev.willtda.simpleschematics.config.SSConfig;
 import dev.willtda.simpleschematics.resource.MaterialResolver;
 import dev.willtda.simpleschematics.resource.ResourceListManager;
 import net.minecraft.client.gui.GuiGraphics;
@@ -11,6 +12,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -21,6 +23,12 @@ import java.util.List;
 public final class ResourceListScreen extends Screen {
 
     private static final int ROW_HEIGHT = 20;
+
+    private static final int TEXT = 0xFFE5E7EB;
+    private static final int DONE = 0xFF6EE7B7;
+    private static final int MUTED = 0xFF6B7280;
+    private static final int WANTED = 0xFFFBBF24;
+    private static final int NAME = 0xFF60A5FA;
 
     private final Screen parent;
     private int scroll;
@@ -82,6 +90,23 @@ public final class ResourceListScreen extends Screen {
                 .bounds(x + buttonWidth + 4, y, buttonWidth, 20).build());
     }
 
+    /** One row, resolved to the exact strings that get measured and then drawn. */
+    private record Line(ResourceListManager.Row row, ItemStack stack, String name,
+                        String have, String breakdown, String count) {
+    }
+
+    private static Line line(ResourceListManager.Row row) {
+        ItemStack stack = new ItemStack(row.item());
+        int missing = row.missing();
+        return new Line(row, stack,
+                ResourceListManager.itemName(row.item()),
+                String.format("%,d / %,d", row.have(), row.required()),
+                SSConfig.INSTANCE.showStackBreakdown.get()
+                        ? MaterialResolver.stackBreakdown(missing, stack.getMaxStackSize())
+                        : "",
+                String.format("%,d", missing));
+    }
+
     /** Nothing to reset until you have ticked something off, so it says so. */
     private void updateButtons() {
         boolean canReset = ResourceListManager.INSTANCE.hasProgress();
@@ -106,6 +131,10 @@ public final class ResourceListScreen extends Screen {
                 String.format("%,d", ResourceListManager.INSTANCE.totalMissing()),
                 String.format("%,d", ResourceListManager.INSTANCE.totalRequired())).getString();
         graphics.drawString(this.font, summary, x + width - this.font.width(summary), 14, 0xFF9CA3AF, false);
+        String build = SSConfig.INSTANCE.showBuildName.get() ? ClientState.INSTANCE.targetName() : null;
+        if (build != null) {
+            graphics.drawString(this.font, fit(build, width), x, 14 + this.font.lineHeight + 3, NAME, false);
+        }
 
         graphics.fill(x, top, x + width, listBottom(), 0x40000000);
 
@@ -122,39 +151,47 @@ public final class ResourceListScreen extends Screen {
         int rowCount = visibleRows();
         scroll = Mth.clamp(scroll, 0, Math.max(0, rows.size() - rowCount));
 
-        graphics.enableScissor(x, top, x + width, listBottom());
+        // The columns are measured from the widest figure on the page, so they
+        // line up down the list rather than each row finding its own.
+        List<Line> lines = new ArrayList<>(rowCount);
+        int haveWidth = 0;
+        int breakdownWidth = 0;
+        int countWidth = 0;
         for (int i = 0; i < rowCount && i + scroll < rows.size(); i++) {
-            ResourceListManager.Row row = rows.get(i + scroll);
+            Line line = line(rows.get(i + scroll));
+            lines.add(line);
+            haveWidth = Math.max(haveWidth, this.font.width(line.have()));
+            breakdownWidth = Math.max(breakdownWidth, this.font.width(line.breakdown()));
+            countWidth = Math.max(countWidth, this.font.width(line.count()));
+        }
+        ResourceListColumns.Layout columns = ResourceListColumns.of(width, haveWidth, breakdownWidth, countWidth);
+
+        graphics.enableScissor(x, top, x + width, listBottom());
+        for (int i = 0; i < lines.size(); i++) {
+            Line line = lines.get(i);
+            ResourceListManager.Row row = line.row();
             int rowY = top + i * ROW_HEIGHT;
+            int textY = rowY + 6;
             boolean hovered = mouseX >= x && mouseX < x + width && mouseY >= rowY && mouseY < rowY + ROW_HEIGHT;
             if (hovered) {
                 graphics.fill(x, rowY, x + width, rowY + ROW_HEIGHT, 0x30FFFFFF);
             }
 
-            ItemStack stack = new ItemStack(row.item());
-            graphics.renderFakeItem(stack, x + 4, rowY + 2);
+            graphics.renderFakeItem(line.stack(), x + 4, rowY + 2);
 
-            int nameColour = row.complete() ? 0xFF6B7280 : 0xFFE5E7EB;
-            String name = ResourceListManager.itemName(row.item());
-            graphics.drawString(this.font, this.font.plainSubstrByWidth(name, width - 190),
-                    x + 24, rowY + 6, nameColour, false);
-
-            String have = row.have() + " / " + row.required();
-            graphics.drawString(this.font, have, x + width - 168, rowY + 6, 0xFF9CA3AF, false);
-
-            int missing = row.missing();
-            String count = String.format("%,d", missing);
-            String breakdown = MaterialResolver.stackBreakdown(missing, stack.getMaxStackSize());
-            if (!breakdown.isEmpty()) {
-                graphics.drawString(this.font, breakdown, x + width - 96, rowY + 6, 0xFF6B7280, false);
-            }
-            int countColour = row.complete() ? 0xFF6EE7B7 : 0xFFFBBF24;
-            graphics.drawString(this.font, count, x + width - 8 - this.font.width(count), rowY + 6,
-                    countColour, false);
-
+            String name = fit(line.name(), columns.nameRoom());
+            int nameX = x + ResourceListColumns.NAME_X;
+            graphics.drawString(this.font, name, nameX, textY, row.complete() ? MUTED : TEXT, false);
             if (row.ticked()) {
-                graphics.fill(x + 24, rowY + 10, x + width - 172, rowY + 11, 0xFF6B7280);
+                graphics.fill(nameX, rowY + 10, nameX + this.font.width(name), rowY + 11, MUTED);
             }
+
+            drawRightAligned(graphics, line.have(), x + columns.haveRight(), textY, 0xFF9CA3AF);
+            if (columns.breakdownShown()) {
+                drawRightAligned(graphics, line.breakdown(), x + columns.breakdownRight(), textY, MUTED);
+            }
+            drawRightAligned(graphics, line.count(), x + columns.countRight(), textY,
+                    row.complete() ? DONE : WANTED);
         }
         graphics.disableScissor();
 
@@ -162,6 +199,22 @@ public final class ResourceListScreen extends Screen {
                 this.width / 2, hintY(), 0xFF6B7280);
 
         super.render(graphics, mouseX, mouseY, partialTick);
+    }
+
+    private void drawRightAligned(GuiGraphics graphics, String text, int right, int y, int colour) {
+        graphics.drawString(this.font, text, right - this.font.width(text), y, colour, false);
+    }
+
+    /**
+     * Trims text to a width with an ellipsis. Measuring the ellipsis rather than
+     * assuming it fits is what stops a trimmed name reaching the column beside it.
+     */
+    private String fit(String text, int room) {
+        if (this.font.width(text) <= room) {
+            return text;
+        }
+        int left = room - this.font.width("...");
+        return left <= 0 ? "" : this.font.plainSubstrByWidth(text, left) + "...";
     }
 
     @Override

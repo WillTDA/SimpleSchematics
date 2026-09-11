@@ -266,6 +266,20 @@ public final class ClientState {
         return placement == null ? null : placement.schematicKey();
     }
 
+    /**
+     * What to call the build the resource list is following: the placement's
+     * own name, or the file name of a schematic still on your crosshair. Null
+     * when there is nothing to follow.
+     */
+    public String targetName() {
+        if (pendingSchematicKey != null) {
+            SchematicLibrary.Entry entry = SchematicLibrary.INSTANCE.byKey(pendingSchematicKey);
+            return entry == null ? null : entry.displayName;
+        }
+        Placement placement = PlacementManager.INSTANCE.selected();
+        return placement == null ? null : placement.displayName();
+    }
+
     // ---- resource list ----------------------------------------------------
 
     /**

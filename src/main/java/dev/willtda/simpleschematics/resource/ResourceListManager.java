@@ -11,6 +11,7 @@ import dev.willtda.simpleschematics.client.InputHandler;
 import dev.willtda.simpleschematics.placement.Placement;
 import dev.willtda.simpleschematics.placement.PlacementManager;
 import dev.willtda.simpleschematics.config.SSConfig;
+import dev.willtda.simpleschematics.render.SchematicVerifier;
 import dev.willtda.simpleschematics.schematic.Schematic;
 import dev.willtda.simpleschematics.util.DataPaths;
 import net.minecraft.client.Minecraft;
@@ -57,14 +58,19 @@ public final class ResourceListManager {
      */
     private static final int REFRESH_INTERVAL_TICKS = 4;
 
-    /** One line of the list. */
-    public record Row(Item item, int required, int available, int manual, boolean ticked) {
+    /**
+     * One line of the list.
+     *
+     * @param placed what is already standing correctly in the world, which
+     *               counts towards the requirement the same as anything carried
+     */
+    public record Row(Item item, int required, int placed, int available, int manual, boolean ticked) {
         public int have() {
-            return Math.min(required, available + manual);
+            return Math.min(required, placed + available + manual);
         }
 
         public int missing() {
-            return Math.max(0, required - available - manual);
+            return Math.max(0, required - placed - available - manual);
         }
 
         public boolean complete() {
@@ -127,6 +133,7 @@ public final class ResourceListManager {
             return;
         }
         Map<Item, Integer> required = requiredFor(activeKey, schematic);
+        Map<Item, Integer> placed = countPlaced();
         countAvailable();
         Progress progress = progressFor(activeKey);
 
@@ -134,9 +141,10 @@ public final class ResourceListManager {
         for (Map.Entry<Item, Integer> entry : required.entrySet()) {
             Item item = entry.getKey();
             int need = entry.getValue();
+            int standing = Math.min(need, placed.getOrDefault(item, 0));
             int have = available.getOrDefault(item, 0);
             int manual = progress.manual.getOrDefault(item, 0);
-            built.add(new Row(item, need, have, manual, progress.ticked.contains(item)));
+            built.add(new Row(item, need, standing, have, manual, progress.ticked.contains(item)));
         }
 
         // biggest job first, which is what you want when planning a trip to the mine
@@ -346,6 +354,20 @@ public final class ResourceListManager {
     }
 
     // ---- counting ---------------------------------------------------------
+
+    /**
+     * What the selected placement already has standing, from the verifier's
+     * last full pass over it. A schematic still on your crosshair has nothing
+     * placed yet, and the first pass after selecting a build takes a moment,
+     * during which the list reads as if nothing were built.
+     */
+    private Map<Item, Integer> countPlaced() {
+        if (!SSConfig.INSTANCE.countPlacedBlocks.get() || ClientState.INSTANCE.hasPending()) {
+            return Map.of();
+        }
+        Placement placement = PlacementManager.INSTANCE.selected();
+        return placement == null ? Map.of() : SchematicVerifier.INSTANCE.resultFor(placement).placed();
+    }
 
     private void countAvailable() {
         available.clear();

@@ -18,6 +18,14 @@ revision, not a verified installable release.
   fog bypass; terrain occlusion; unchanged world depth; and coplanar depth bias.
 - Checked the two language files have matching keys and UK English text, with no
   em dashes and no missing static translation keys used by the source.
+- Compiled and ran `ResourceListLayoutCheck` against the real column arithmetic of
+  the resource list screen, and a model of the overlay's header. Across twenty
+  window sizes from below vanilla's floor to 4K, five overlay scales, with and
+  without the build name, and totals up to seven digits: no figure column touches
+  its neighbour, the breakdown is only dropped when it would squeeze the name
+  below sixty pixels, the name keeps that much on every window vanilla can show,
+  and the panel stays inside its two thirds of the window whenever there is room
+  for more than one row.
 
 ## Shader pack compatibility
 
@@ -62,6 +70,8 @@ From the project root with JDK 17:
 mkdir -p build/verification
 javac -d build/verification scripts/SectionVisibilityTest.java src/main/java/dev/willtda/simpleschematics/render/SectionVisibility.java
 java -cp build/verification SectionVisibilityTest
+javac -encoding UTF-8 -d build/verification scripts/ResourceListLayoutCheck.java src/main/java/dev/willtda/simpleschematics/gui/ResourceListColumns.java
+java -cp build/verification ResourceListLayoutCheck
 java scripts/ParseSources.java
 ```
 

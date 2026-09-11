@@ -543,9 +543,19 @@ public final class InputHandler {
     /**
      * Feeds the diff only the placements that are visible and close enough to
      * matter, so a folder full of distant builds costs nothing.
+     *
+     * <p>The resource list wants the selected placement checked whatever mode
+     * you are in and whether or not the highlight is drawing, because what is
+     * already standing comes off what it says you still need. That one skips
+     * the distance test: far away it simply finds nothing loaded and keeps what
+     * the last pass saw.</p>
      */
     private static void tickVerifier(Minecraft mc) {
-        if (STATE.mode() != EditMode.BUILD || !SchematicVerifier.INSTANCE.isEnabled()) {
+        boolean highlighting = STATE.mode() == EditMode.BUILD && SchematicVerifier.INSTANCE.isEnabled();
+        Placement followed = SSConfig.INSTANCE.countPlacedBlocks.get() && !STATE.hasPending()
+                ? PlacementManager.INSTANCE.selected()
+                : null;
+        if (!highlighting && followed == null) {
             return;
         }
         double maxDistance = SSConfig.INSTANCE.hologramRenderDistance.get();
@@ -553,7 +563,7 @@ public final class InputHandler {
         List<Placement> active = new ArrayList<>();
         Map<String, Schematic> schematics = new HashMap<>();
         for (Placement placement : PlacementManager.INSTANCE.current()) {
-            if (!placement.visible()) {
+            if (placement != followed && !(highlighting && placement.visible())) {
                 continue;
             }
             SchematicLibrary.Entry entry = SchematicLibrary.INSTANCE.byKey(placement.schematicKey());
@@ -561,7 +571,8 @@ public final class InputHandler {
             if (schematic == null) {
                 continue;
             }
-            if (!placement.bounds(schematic).inflate(maxDistance).contains(mc.player.position())) {
+            if (placement != followed
+                    && !placement.bounds(schematic).inflate(maxDistance).contains(mc.player.position())) {
                 continue;
             }
             active.add(placement);

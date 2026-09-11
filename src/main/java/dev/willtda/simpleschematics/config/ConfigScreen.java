@@ -204,6 +204,9 @@ public final class ConfigScreen extends Screen {
         toggle("simpleschematics.config.countEnderChest", x, fieldWidth, c.countEnderChest);
         toggle("simpleschematics.config.showStackBreakdown", x, fieldWidth, c.showStackBreakdown);
         toggle("simpleschematics.config.hideCompletedRows", x, fieldWidth, c.hideCompletedRows);
+        toggle("simpleschematics.config.countPlacedBlocks", x, fieldWidth, c.countPlacedBlocks,
+                "simpleschematics.tip.count_placed");
+        toggle("simpleschematics.config.showBuildName", x, fieldWidth, c.showBuildName);
 
         heading("simpleschematics.config.section.data");
         action("simpleschematics.config.openFolder", x, fieldWidth, "simpleschematics.config.open",

@@ -84,6 +84,8 @@ public final class SSConfig {
     public final ForgeConfigSpec.BooleanValue countEnderChest;
     public final ForgeConfigSpec.BooleanValue showStackBreakdown;
     public final ForgeConfigSpec.BooleanValue hideCompletedRows;
+    public final ForgeConfigSpec.BooleanValue countPlacedBlocks;
+    public final ForgeConfigSpec.BooleanValue showBuildName;
 
     public enum Anchor {
         TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT
@@ -218,6 +220,11 @@ public final class SSConfig {
                 .define("showStackBreakdown", true);
         hideCompletedRows = b.comment("Hide rows once they are fully gathered")
                 .define("hideCompletedRows", true);
+        countPlacedBlocks = b.comment("Take blocks already standing correctly in the placement off what is still needed.",
+                        "Only loaded chunks can be checked, so a distant build reads as untouched until you visit it")
+                .define("countPlacedBlocks", true);
+        showBuildName = b.comment("Name the build the list is following, above the list itself")
+                .define("showBuildName", true);
         b.pop();
     }
 

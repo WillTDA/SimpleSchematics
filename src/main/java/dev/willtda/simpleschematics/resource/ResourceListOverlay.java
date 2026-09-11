@@ -35,6 +35,8 @@ public final class ResourceListOverlay implements IGuiOverlay {
     private static final int PADDING = 4;
     /** The title, its breathing room, and the rule underneath it. */
     private static final int HEADER_HEIGHT = 20;
+    /** Added above the title when the build's name is shown. */
+    private static final int NAME_HEIGHT = 12;
     private static final int ICON = 16;
     private static final int ICON_GAP = 4;
     /** Held between the name and the figures, so the two columns never touch. */
@@ -47,6 +49,7 @@ public final class ResourceListOverlay implements IGuiOverlay {
     private static final int DONE = 0xFF6EE7B7;
     private static final int MUTED = 0xFF6B7280;
     private static final int WANTED = 0xFFFBBF24;
+    private static final int NAME = 0xFF60A5FA;
 
     private ResourceListOverlay() {
     }
@@ -76,9 +79,12 @@ public final class ResourceListOverlay implements IGuiOverlay {
                 Math.max(MIN_WIDTH, (int) (screenWidth * 0.66F / scale)));
         int maxHeight = (int) (screenHeight * 0.66F / scale);
 
+        String name = SSConfig.INSTANCE.showBuildName.get() ? state.targetName() : null;
+        int header = HEADER_HEIGHT + (name != null ? NAME_HEIGHT : 0);
+
         // The count of hidden rows takes a line of its own. Reserving it here is
         // what stops it being drawn across the last row it is counting.
-        int roomForLines = Math.max(1, (maxHeight - HEADER_HEIGHT - PADDING) / ROW_HEIGHT);
+        int roomForLines = Math.max(1, (maxHeight - header - PADDING) / ROW_HEIGHT);
         int drawn = Math.min(Math.min(SSConfig.INSTANCE.resourceListMaxRows.get(), rows.size()), roomForLines);
         if (rows.size() > drawn && drawn + 1 > roomForLines) {
             drawn = Math.max(1, roomForLines - 1);
@@ -102,9 +108,9 @@ public final class ResourceListOverlay implements IGuiOverlay {
                 ? Component.translatable("simpleschematics.resource.all_done").getString()
                 : "";
 
-        int width = measure(font, lines, title, summary, more, empty, widthCap);
+        int width = measure(font, lines, name, title, summary, more, empty, widthCap);
         int shown = Math.max(1, lines.size()) + (hidden > 0 ? 1 : 0);
-        int height = HEADER_HEIGHT + shown * ROW_HEIGHT + PADDING;
+        int height = header + shown * ROW_HEIGHT + PADDING;
 
         int offsetX = SSConfig.INSTANCE.resourceListOffsetX.get();
         int offsetY = SSConfig.INSTANCE.resourceListOffsetY.get();
@@ -143,20 +149,25 @@ public final class ResourceListOverlay implements IGuiOverlay {
         graphics.fill(0, 0, width, 1, 0x33FFFFFF);
         graphics.fill(0, height - 1, width, height, 0x33FFFFFF);
 
-        graphics.drawString(font, title, PADDING, PADDING, 0xFFFFFFFF, false);
-        graphics.drawString(font, summary, width - PADDING - font.width(summary), PADDING,
+        int titleY = PADDING;
+        if (name != null) {
+            graphics.drawString(font, fit(font, name, width - PADDING * 2), PADDING, PADDING, NAME, false);
+            titleY += NAME_HEIGHT;
+        }
+        graphics.drawString(font, title, PADDING, titleY, 0xFFFFFFFF, false);
+        graphics.drawString(font, summary, width - PADDING - font.width(summary), titleY,
                 missing == 0 ? DONE : TEXT, false);
-        graphics.fill(PADDING, HEADER_HEIGHT - 4, width - PADDING, HEADER_HEIGHT - 3, 0x33FFFFFF);
+        graphics.fill(PADDING, header - 4, width - PADDING, header - 3, 0x33FFFFFF);
 
         if (lines.isEmpty()) {
-            graphics.drawString(font, empty, PADDING, HEADER_HEIGHT + 5, DONE, false);
+            graphics.drawString(font, empty, PADDING, header + 5, DONE, false);
         } else {
             for (int i = 0; i < lines.size(); i++) {
-                drawRow(graphics, font, lines.get(i), width, HEADER_HEIGHT + i * ROW_HEIGHT);
+                drawRow(graphics, font, lines.get(i), width, header + i * ROW_HEIGHT);
             }
             if (hidden > 0) {
                 graphics.drawString(font, more, width - PADDING - font.width(more),
-                        HEADER_HEIGHT + lines.size() * ROW_HEIGHT + 5, MUTED, false);
+                        header + lines.size() * ROW_HEIGHT + 5, MUTED, false);
             }
         }
 
@@ -176,9 +187,12 @@ public final class ResourceListOverlay implements IGuiOverlay {
     }
 
     /** The width the panel would like, held to the ceiling it is allowed. */
-    private static int measure(Font font, List<Line> lines, String title, String summary,
+    private static int measure(Font font, List<Line> lines, String name, String title, String summary,
                                String more, String empty, int cap) {
         int widest = font.width(title) + COLUMN_GAP + font.width(summary);
+        if (name != null) {
+            widest = Math.max(widest, font.width(name));
+        }
         for (Line line : lines) {
             widest = Math.max(widest,
                     ICON + ICON_GAP + font.width(line.name()) + COLUMN_GAP + figures(font, line));
@@ -207,14 +221,7 @@ public final class ResourceListOverlay implements IGuiOverlay {
         int textX = PADDING + ICON + ICON_GAP;
         int figures = figures(font, line);
         // The figures are never trimmed, so what is left over is the name's.
-        // Measuring the ellipsis rather than assuming it fits is what stops a
-        // trimmed name overrunning the column beside it.
-        int available = width - PADDING - figures - COLUMN_GAP - textX;
-        String name = line.name();
-        if (font.width(name) > available) {
-            int room = available - font.width("...");
-            name = room <= 0 ? "" : font.plainSubstrByWidth(name, room) + "...";
-        }
+        String name = fit(font, line.name(), width - PADDING - figures - COLUMN_GAP - textX);
         graphics.drawString(font, name, textX, y + 5, line.complete() ? MUTED : TEXT, false);
 
         int countWidth = font.width(line.count());
@@ -225,6 +232,19 @@ public final class ResourceListOverlay implements IGuiOverlay {
         }
         graphics.drawString(font, line.count(), width - PADDING - countWidth, y + 5,
                 line.complete() ? DONE : WANTED, false);
+    }
+
+    /**
+     * Trims text to a width with an ellipsis. Measuring the ellipsis rather than
+     * assuming it fits is what stops a trimmed name overrunning the column
+     * beside it.
+     */
+    private static String fit(Font font, String text, int room) {
+        if (font.width(text) <= room) {
+            return text;
+        }
+        int left = room - font.width("...");
+        return left <= 0 ? "" : font.plainSubstrByWidth(text, left) + "...";
     }
 
     private static String format(int value) {

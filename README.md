@@ -90,9 +90,10 @@ Ghost faces use one transparent shader, sort from the camera, keep the world's d
 ### Resource list
 
 - **M** and **O** shows or hides the overlay for whichever build you are working on. That choice is remembered per placement and written out with it, so a half finished build still has its list waiting the next time you log in.
-- It sits in the bottom right by default, refreshes five times a second, and drops rows the moment you have gathered them.
-- Sorted with the biggest shortfall first, shown as `1,234 (19 stacks + 18)`.
+- It sits in the bottom right by default, refreshes five times a second, and drops rows the moment you have gathered them. The build it is following is named above it; **Show the Build's Name** in the settings turns that off.
+- Sorted with the biggest shortfall first, shown as `1,234` with `19 × 64 + 18` beside it. A single stack reads `64 + 18`.
 - Items disappear from the list as you collect them. That includes your inventory, offhand, the stack on your cursor, your ender chest, and any chest you currently have open.
+- Blocks already standing correctly in the placement come off the total too, so a half built wall only asks for the half that is missing. It uses the same comparison as the mismatch highlight, whether or not that is switched on, and can only see loaded chunks: a build you have not been near this session reads as untouched until you visit it. **Count Blocks Already Placed** in the settings turns it off.
 - **Shift and right click a chest** with the stick out to hand it to the build you have selected. Banked chests are boxed in amber while you build, and whatever is inside counts towards the list even when the chest is shut. Shift and right click again to take it back off. Both halves of a double chest count as one.
 - Left click a row to tick it off, right click to clear that, and shift and scroll to correct a total by hand. Hold ctrl while scrolling to move in stacks.
 - Position, size, width and row count are all in the config. It defaults to the bottom right and shrinks itself to fit rather than running off the screen, at every GUI scale.

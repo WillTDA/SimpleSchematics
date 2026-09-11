@@ -2,9 +2,11 @@ package dev.willtda.simpleschematics.render;
 
 import dev.willtda.simpleschematics.config.SSConfig;
 import dev.willtda.simpleschematics.placement.Placement;
+import dev.willtda.simpleschematics.resource.MaterialResolver;
 import dev.willtda.simpleschematics.schematic.Schematic;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.SlabBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -31,6 +33,12 @@ import java.util.Set;
  * placement properties such as facing and half must match, while connections
  * and power may settle as construction progresses. Strict mode checks every
  * property.</p>
+ *
+ * <p>The same pass also adds up what the correctly placed blocks cost, which is
+ * how the resource list knows what is already standing. That is why the
+ * verifier is fed the selected placement even while the highlight is off: the
+ * caller decides what gets checked, and the highlight switch only decides what
+ * gets drawn.</p>
  */
 public final class SchematicVerifier {
 
@@ -40,9 +48,15 @@ public final class SchematicVerifier {
     public record Mark(BlockPos pos, int layer) {
     }
 
-    /** A finished comparison, safe to read from the render thread. */
+    /**
+     * A finished comparison, safe to read from the render thread.
+     *
+     * @param placed what the correctly placed blocks cost, by item, in the same
+     *               terms the resource list counts requirements
+     */
     public record Diff(List<Mark> wrong, List<Mark> extra, int wrongCount, int extraCount,
-                       int missing, int correct, int total, boolean truncated) {
+                       int missing, int correct, int total, boolean truncated,
+                       Map<Item, Integer> placed) {
 
         public boolean hasAnything() {
             return wrongCount > 0 || extraCount > 0;
@@ -54,7 +68,7 @@ public final class SchematicVerifier {
     }
 
     private static final Diff EMPTY =
-            new Diff(List.of(), List.of(), 0, 0, 0, 0, 0, false);
+            new Diff(List.of(), List.of(), 0, 0, 0, 0, 0, false, Map.of());
 
     private final Map<String, State> states = new HashMap<>();
     private boolean enabled = true;
@@ -66,11 +80,13 @@ public final class SchematicVerifier {
         return enabled && SSConfig.INSTANCE.highlightMismatches.get();
     }
 
+    /**
+     * Switching the highlight off does not throw the results away. The resource
+     * list may still be reading the selected placement's, and anything nobody
+     * wants any more is dropped on the next tick.
+     */
     public void setEnabled(boolean value) {
         this.enabled = value;
-        if (!value) {
-            states.clear();
-        }
     }
 
     /**
@@ -106,16 +122,11 @@ public final class SchematicVerifier {
     /**
      * Advances every active placement a little. Call once per client tick.
      *
-     * @param active the placements worth checking, already filtered by
-     *               visibility and distance by the caller
+     * @param active the placements worth checking: those the highlight wants,
+     *               already filtered by visibility and distance, and the one
+     *               the resource list is following
      */
     public void tick(List<Placement> active, Map<String, Schematic> schematics) {
-        if (!isEnabled()) {
-            if (!states.isEmpty()) {
-                states.clear();
-            }
-            return;
-        }
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || active.isEmpty()) {
             states.clear();
@@ -169,6 +180,7 @@ public final class SchematicVerifier {
         private int workingExtraCount;
         private boolean workingTruncated;
         private BitSet workingMask;
+        private Map<Item, Integer> workingPlaced = new HashMap<>();
 
         private Diff published;
         private BitSet correctMask;
@@ -197,6 +209,7 @@ public final class SchematicVerifier {
             this.workingExtraCount = 0;
             this.workingTruncated = false;
             this.workingMask = new BitSet(current.blockCount());
+            this.workingPlaced = new HashMap<>();
             this.correctMask = new BitSet(current.blockCount());
             this.dirtySections = new BitSet();
             this.published = null;
@@ -228,15 +241,21 @@ public final class SchematicVerifier {
                 int z = (index / w) % l;
                 int y = index / (w * l);
 
-                BlockState wanted = schematic.getBlockState(x, y, z)
-                        .mirror(placement.mirror()).rotate(placement.rotation());
+                BlockState local = schematic.getBlockState(x, y, z);
+                BlockState wanted = local.mirror(placement.mirror()).rotate(placement.rotation());
                 BlockPos world = placement.toWorld(schematic, x, y, z);
 
                 if (world.getY() < level.getMinBuildHeight() || world.getY() >= level.getMaxBuildHeight()) {
                     continue;
                 }
                 if (!level.isLoaded(world)) {
-                    // unloaded chunk, leave it alone rather than reporting a phantom mismatch
+                    // An unloaded chunk cannot be read, so the block keeps whatever
+                    // the last pass found. Walking away from a build would otherwise
+                    // put its correctly placed blocks back on the resource list one
+                    // chunk at a time, and reporting a phantom mismatch is no better.
+                    if (correctMask.get(index)) {
+                        markCorrect(index, local);
+                    }
                     continue;
                 }
 
@@ -257,8 +276,7 @@ public final class SchematicVerifier {
                 }
 
                 if (sameBlock(wanted, actual)) {
-                    workingCorrect++;
-                    workingMask.set(index);
+                    markCorrect(index, local);
                 } else if (actualEmpty) {
                     workingMissing++;
                 } else {
@@ -282,6 +300,20 @@ public final class SchematicVerifier {
                 workingExtraCount = 0;
                 workingTruncated = false;
                 workingMask = new BitSet(total);
+                workingPlaced = new HashMap<>();
+            }
+        }
+
+        /**
+         * Costed from the unrotated state, which is the one the resource list
+         * priced the requirement from, so the two totals are in the same units.
+         */
+        private void markCorrect(int index, BlockState local) {
+            workingCorrect++;
+            workingMask.set(index);
+            MaterialResolver.Cost cost = MaterialResolver.costOf(local);
+            if (!cost.isNothing()) {
+                workingPlaced.merge(cost.item(), cost.amount(), Integer::sum);
             }
         }
 
@@ -306,7 +338,8 @@ public final class SchematicVerifier {
 
             published = new Diff(List.copyOf(workingWrong), List.copyOf(workingExtra),
                     workingWrongCount, workingExtraCount,
-                    workingMissing, workingCorrect, total, workingTruncated);
+                    workingMissing, workingCorrect, total, workingTruncated,
+                    Map.copyOf(workingPlaced));
         }
 
         private static final Set<String> PLACEMENT_PROPERTIES = Set.of(
@@ -347,7 +380,7 @@ public final class SchematicVerifier {
             total += diff.total();
             truncated |= diff.truncated();
         }
-        return new Diff(List.of(), List.of(), wrong, extra, missing, correct, total, truncated);
+        return new Diff(List.of(), List.of(), wrong, extra, missing, correct, total, truncated, Map.of());
     }
 
     /** True once at least one placement has finished a pass. */
