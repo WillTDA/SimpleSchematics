@@ -339,11 +339,17 @@ public final class BakedSchematic implements AutoCloseable {
                         for (int bx = x; bx < Math.min(x + SECTION, schematic.width()); bx++) {
                             cursor.set(bx, by, bz);
                             BlockState state = view.getBlockState(cursor);
-                            if (state.isAir() || state.getRenderShape() != RenderShape.MODEL) continue;
+                            if (state.isAir() || state.getRenderShape() == RenderShape.INVISIBLE) continue;
                             var model = dispatcher.getBlockModel(state);
                             pose.pushPose();
                             pose.translate(bx - x, by - y, bz - z);
                             try {
+                                if (state.getRenderShape() != RenderShape.MODEL) {
+                                    // beds, chests and the like: a block entity renderer's job, stood in for
+                                    EntityBlockStandIn.bake(view, state, cursor, pose, builder,
+                                            model.getParticleIcon(ModelData.EMPTY));
+                                    continue;
+                                }
                                 random.setSeed(state.getSeed(cursor));
                                 for (RenderType type : model.getRenderTypes(state, random, ModelData.EMPTY)) {
                                     dispatcher.getModelRenderer().tesselateBlock(view, model, state, cursor,

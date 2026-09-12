@@ -311,10 +311,7 @@ public final class SchematicVerifier {
         private void markCorrect(int index, BlockState local) {
             workingCorrect++;
             workingMask.set(index);
-            MaterialResolver.Cost cost = MaterialResolver.costOf(local);
-            if (!cost.isNothing()) {
-                workingPlaced.merge(cost.item(), cost.amount(), Integer::sum);
-            }
+            MaterialResolver.costOf(local).addTo(workingPlaced);
         }
 
         private void publish(int total) {

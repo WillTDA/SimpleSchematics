@@ -6,6 +6,8 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CandleCakeBlock;
+import net.minecraft.world.level.block.FlowerPotBlock;
 import net.minecraft.world.level.block.SlabBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BedPart;
@@ -14,6 +16,7 @@ import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.level.block.state.properties.SlabType;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -21,17 +24,35 @@ import java.util.Map;
  *
  * <p>The fiddly cases are the ones that would otherwise make a list wrong:
  * doors and beds occupy two blocks but cost one item, a double slab costs two,
- * candles and sea pickles cost one each, and a wall torch is still just a
- * torch.</p>
+ * candles and sea pickles cost one each, a wall torch is still just a torch,
+ * and a potted flower is a pot and a flower.</p>
  */
 public final class MaterialResolver {
 
-    /** What one block state costs. A null item means it needs nothing at all. */
-    public record Cost(Item item, int amount) {
-        public static final Cost NOTHING = new Cost(null, 0);
+    /**
+     * What one block state costs. Usually a single item, but a potted plant or
+     * a candle on a cake is two things, neither of which has an item of its
+     * own once combined.
+     */
+    public record Cost(List<Entry> entries) {
+        public record Entry(Item item, int amount) {
+        }
+
+        public static final Cost NOTHING = new Cost(List.of());
+
+        public static Cost of(Item item, int amount) {
+            return item == null || item == Items.AIR || amount <= 0 ? NOTHING : new Cost(List.of(new Entry(item, amount)));
+        }
 
         public boolean isNothing() {
-            return item == null || amount <= 0;
+            return entries.isEmpty();
+        }
+
+        /** Adds this cost to a running total of items. */
+        public void addTo(Map<Item, Integer> totals) {
+            for (Entry entry : entries) {
+                totals.merge(entry.item(), entry.amount(), Integer::sum);
+            }
         }
     }
 
@@ -103,6 +124,21 @@ public final class MaterialResolver {
             return Cost.NOTHING;
         }
 
+        // Two items in one block, neither of which the combined block hands back
+        // as its own item: the potted blocks and the candle cakes report air.
+        if (block instanceof FlowerPotBlock pot) {
+            Item plant = pot.getContent().asItem();
+            return plant == Items.AIR
+                    ? Cost.of(Items.FLOWER_POT, 1)
+                    : new Cost(List.of(new Cost.Entry(Items.FLOWER_POT, 1), new Cost.Entry(plant, 1)));
+        }
+        if (block instanceof CandleCakeBlock) {
+            Item candle = candleOf(block);
+            return candle == null
+                    ? Cost.of(Items.CAKE, 1)
+                    : new Cost(List.of(new Cost.Entry(Items.CAKE, 1), new Cost.Entry(candle, 1)));
+        }
+
         Item item = resolveItem(block);
         if (item == null || item == Items.AIR) {
             return Cost.NOTHING;
@@ -122,7 +158,22 @@ public final class MaterialResolver {
             amount = state.getValue(BlockStateProperties.LAYERS);
         }
 
-        return new Cost(item, amount);
+        return Cost.of(item, amount);
+    }
+
+    /**
+     * The candle sitting on a candle cake. The block keeps its candle to
+     * itself, but the two are named in step, red_candle_cake for red_candle,
+     * so the id gets there.
+     */
+    private static Item candleOf(Block cake) {
+        ResourceLocation id = BuiltInRegistries.BLOCK.getKey(cake);
+        if (id == null || !id.getPath().endsWith("_cake")) {
+            return null;
+        }
+        String path = id.getPath().substring(0, id.getPath().length() - "_cake".length());
+        Item candle = BuiltInRegistries.ITEM.get(new ResourceLocation(id.getNamespace(), path));
+        return candle == Items.AIR ? null : candle;
     }
 
     private static Item resolveItem(Block block) {

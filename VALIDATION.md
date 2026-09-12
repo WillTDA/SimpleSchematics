@@ -107,9 +107,11 @@ python3 scripts/check_shader.py
 
 ## Scope and remaining renderer limits
 
-This repair covers baked block models. It does not add fluid, block entity or
-entity ghost rendering. A saved chest, sign or armour stand may therefore have
-no complete ghost representation. Large models are still baked over several
+This repair covers baked block models. Blocks drawn by a block entity renderer
+(beds, chests, signs, banners, heads, shulker boxes) are stood in for by boxes of
+the block's shape wearing its particle texture, since their models hold no quads.
+Fluids and entity ghosts are not drawn, so an armour stand has no ghost at all.
+The stand-ins have not been checked in game. Large models are still baked over several
 frames, and translucent ordering is per section and per placement rather than a
 global sort of every face in the scene.
 

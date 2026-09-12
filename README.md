@@ -139,7 +139,7 @@ Things to work out before writing any of it:
 
 **Container contents on servers.** A client side mod can only see inside a chest you have actually opened. Scanning a room full of unopened chests records the chests but not what is in them. The save dialogue says so at the time.
 
-**Rendering limits.** Ghosts currently render baked block models. Fluids, block entity renderers such as chests and signs, and saved entities are not drawn by this renderer. Large builds appear a few sections at a time. Overlapping transparent surfaces may still show sorting artefacts, especially where multiple placements overlap. Shader packs and alternative renderers need testing in Minecraft.
+**Rendering limits.** Ghosts render baked block models. Blocks that the game draws with a block entity renderer, such as beds, chests, signs and banners, have no model to bake, so they are stood in for by boxes of the block's own shape in its particle texture: a bed is a low slab in its wool colour, a chest a planks box. Fluids and saved entities are not drawn. Large builds appear a few sections at a time. Overlapping transparent surfaces may still show sorting artefacts, especially where multiple placements overlap. Shader packs and alternative renderers need testing in Minecraft.
 
 ## Licence
 

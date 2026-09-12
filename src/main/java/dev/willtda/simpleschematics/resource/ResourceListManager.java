@@ -448,21 +448,12 @@ public final class ResourceListManager {
             return cached;
         }
         Map<Item, Integer> totals = new HashMap<>();
-        BlockState[] palette = schematic.palette();
-        MaterialResolver.Cost[] costs = new MaterialResolver.Cost[palette.length];
-        for (int i = 0; i < palette.length; i++) {
-            costs[i] = MaterialResolver.costOf(palette[i]);
-        }
         for (int y = 0; y < schematic.height(); y++) {
             for (int z = 0; z < schematic.length(); z++) {
                 for (int x = 0; x < schematic.width(); x++) {
                     BlockState state = schematic.getBlockState(x, y, z);
-                    if (state.isAir()) {
-                        continue;
-                    }
-                    MaterialResolver.Cost cost = MaterialResolver.costOf(state);
-                    if (!cost.isNothing()) {
-                        totals.merge(cost.item(), cost.amount(), Integer::sum);
+                    if (!state.isAir()) {
+                        MaterialResolver.costOf(state).addTo(totals);
                     }
                 }
             }
