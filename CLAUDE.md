@@ -1,6 +1,6 @@
 # Simple Schematics
 
-Client-side schematic mod for **Minecraft 1.20.1 / Forge 47.3.0**, Java 17, package
+Client-side schematic mod for **Minecraft Forge 1.20.1**, Java 17, package
 `dev.willtda.simpleschematics`. Not a git repository at time of writing.
 
 Read `README.md` for what the mod does and how it is used. This file is for the things

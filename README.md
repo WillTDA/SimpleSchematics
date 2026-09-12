@@ -2,7 +2,7 @@
 
 **Guided building made easy.**
 
-A deliberately small schematic mod for **Minecraft 1.20.1 / Forge 47.3.0**, by WillTDA.
+A deliberately small schematic mod for **Minecraft Forge 1.20.1**, by WillTDA.
 
 Client side only. It is never required on the server, so you can use it on any vanilla or modded server you can already join.
 
