@@ -72,7 +72,7 @@ Press **M** and **H** to switch the mismatch highlight on or off. While it is on
 
 Toggling it on reports the totals above the hotbar. The highlight respects layer mode, so stepping through layers shows you only that layer's mistakes.
 
-The comparison checks block type and placement properties such as facing, axis and slab half. Expected states follow the selected rotation and mirror. Connections, redstone power, waterlogging and whether a door is open are ignored unless **Match the full block state** is on. A door hung from the other side, which the game records as facing the other way with the hinge swapped, counts as the same door.
+The comparison checks block type and placement properties such as facing, axis and slab half. Expected states follow the selected rotation and mirror. Connections, redstone power, waterlogging and whether a door is open are ignored unless **Match the full block state** is on. A door hung from the other side, which the game records as facing the other way with the hinge swapped, counts as the same door. A shut trapdoor matches whichever edge it hinges on, since that only shows once it is open; a trapdoor the schematic has open must hinge on the same side.
 
 The comparison loops rather than listening for block updates, so it repairs itself after a chunk reload or a server correction. It costs a fixed budget of blocks per tick, which you can lower in the config if a very large build costs you frames.
 

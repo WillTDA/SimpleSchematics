@@ -10,6 +10,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.DoorBlock;
 import net.minecraft.world.level.block.SlabBlock;
+import net.minecraft.world.level.block.TrapDoorBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
 
@@ -353,7 +354,12 @@ public final class SchematicVerifier {
             if (SSConfig.INSTANCE.strictStateMatch.get()) return wanted.equals(actual);
             if (wanted.getBlock() != actual.getBlock()) return false;
             if (wanted.getBlock() instanceof DoorBlock && flippedDoor(wanted, actual)) return true;
+            // A shut trapdoor looks the same whichever edge it hinges on, and the
+            // hinge comes from which face you happened to click, so it only has
+            // to match when the schematic has the trapdoor open and the hinge shows.
+            boolean shutTrapdoor = wanted.getBlock() instanceof TrapDoorBlock && !wanted.getValue(TrapDoorBlock.OPEN);
             for (Property<?> property : wanted.getProperties()) {
+                if (shutTrapdoor && property == TrapDoorBlock.FACING) continue;
                 if ((PLACEMENT_PROPERTIES.contains(property.getName())
                         || (wanted.getBlock() instanceof SlabBlock && property.getName().equals("type")))
                         && !wanted.getValue(property).equals(actual.getValue(property))) {
