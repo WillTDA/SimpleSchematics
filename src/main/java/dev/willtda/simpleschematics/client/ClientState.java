@@ -43,6 +43,12 @@ public final class ClientState {
 
     /** Set while a schematic follows your crosshair, before you commit to a spot. */
     private String pendingSchematicKey;
+    /**
+     * A schematic being read in a screen rather than built in the world. It
+     * stands in as the target only while that screen is up, so the lists can
+     * show it without the crosshair or the selection changing underneath.
+     */
+    private String previewSchematicKey;
 
     private boolean resourceListVisible;
     private boolean buildListVisible;
@@ -289,13 +295,49 @@ public final class ClientState {
     }
 
     /**
+     * Shows a schematic from the library in the lists without holding it. The
+     * old way was to put it on the crosshair, which left a ghost following you
+     * out of the screen and switched the corner lists over to it, so a build
+     * you were part way through lost its list for opening the full one.
+     */
+    public void setPreviewSchematicKey(String key) {
+        this.previewSchematicKey = key;
+    }
+
+    /**
+     * The placement the lists are actually following, or null while a
+     * schematic on the crosshair or in a screen is standing in for it. What is
+     * already built and which chests are banked belong to the placement, so
+     * they only count when it is the placement being read.
+     */
+    public Placement followedPlacement() {
+        if (pendingSchematicKey != null) {
+            return null;
+        }
+        Placement placement = PlacementManager.INSTANCE.selected();
+        if (placement == null) {
+            return null;
+        }
+        if (previewSchematicKey != null && !previewSchematicKey.equals(placement.schematicKey())) {
+            return null;
+        }
+        return placement;
+    }
+
+    /** Whether the corner lists have any business being on screen: the mod on, in Build. */
+    public boolean overlaysActive() {
+        return isEnabled() && mode() == EditMode.BUILD;
+    }
+
+    /**
      * The schematic the hologram, layer view and resource list all refer to.
      * That is whatever you are about to place, or otherwise the selected
      * placement.
      */
     public Schematic targetSchematic() {
-        if (pendingSchematicKey != null) {
-            SchematicLibrary.Entry entry = SchematicLibrary.INSTANCE.byKey(pendingSchematicKey);
+        String previewed = previewSchematicKey != null ? previewSchematicKey : pendingSchematicKey;
+        if (previewed != null) {
+            SchematicLibrary.Entry entry = SchematicLibrary.INSTANCE.byKey(previewed);
             return entry == null ? null : entry.get();
         }
         Placement placement = PlacementManager.INSTANCE.selected();
@@ -307,6 +349,9 @@ public final class ClientState {
     }
 
     public String targetSchematicKey() {
+        if (previewSchematicKey != null) {
+            return previewSchematicKey;
+        }
         if (pendingSchematicKey != null) {
             return pendingSchematicKey;
         }
@@ -320,8 +365,9 @@ public final class ClientState {
      * when there is nothing to follow.
      */
     public String targetName() {
-        if (pendingSchematicKey != null) {
-            SchematicLibrary.Entry entry = SchematicLibrary.INSTANCE.byKey(pendingSchematicKey);
+        String previewed = previewSchematicKey != null ? previewSchematicKey : pendingSchematicKey;
+        if (previewed != null) {
+            SchematicLibrary.Entry entry = SchematicLibrary.INSTANCE.byKey(previewed);
             return entry == null ? null : entry.displayName;
         }
         Placement placement = PlacementManager.INSTANCE.selected();
@@ -418,6 +464,7 @@ public final class ClientState {
     public void reset() {
         selection.clear();
         pendingSchematicKey = null;
+        previewSchematicKey = null;
         layerView = LayerView.ALL;
         layer = 0;
         layerOwner = null;

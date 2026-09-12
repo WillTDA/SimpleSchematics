@@ -2,7 +2,6 @@ package dev.willtda.simpleschematics.resource;
 
 import dev.willtda.simpleschematics.client.ClientState;
 import dev.willtda.simpleschematics.placement.Placement;
-import dev.willtda.simpleschematics.placement.PlacementManager;
 import dev.willtda.simpleschematics.render.SchematicVerifier;
 import dev.willtda.simpleschematics.schematic.Schematic;
 import net.minecraft.world.item.Item;
@@ -64,7 +63,7 @@ public final class BuildListManager {
             return;
         }
 
-        Placement placement = state.hasPending() ? null : PlacementManager.INSTANCE.selected();
+        Placement placement = state.followedPlacement();
         BitSet mask = placement == null ? null : SchematicVerifier.INSTANCE.correctMaskFor(placement);
         String next = key + "|" + state.layerView() + "|" + state.layer()
                 + "|" + (placement == null ? "" : placement.id());
@@ -98,6 +97,11 @@ public final class BuildListManager {
         if (state.layerView() == ClientState.LayerView.SINGLE) {
             int y = Math.min(state.layer(), Math.max(0, schematic.height() - 1));
             required = new HashMap<>();
+            // A block only part way there, an empty pot under a potted plant,
+            // is not in the mask, so what is standing of it is taken off here.
+            Map<Integer, MaterialResolver.Cost> partial = placement == null || mask == null
+                    ? Map.of()
+                    : SchematicVerifier.INSTANCE.resultFor(placement).partial();
             int w = schematic.width();
             int l = schematic.length();
             for (int z = 0; z < l; z++) {
@@ -109,8 +113,15 @@ public final class BuildListManager {
                     MaterialResolver.Cost cost = MaterialResolver.costOf(block);
                     cost.addTo(required);
                     int index = (y * l + z) * w + x;
-                    if (mask == null || !mask.get(index)) {
-                        cost.addTo(remaining);
+                    if (mask != null && mask.get(index)) {
+                        continue;
+                    }
+                    cost.addTo(remaining);
+                    MaterialResolver.Cost standing = partial.get(index);
+                    if (standing != null) {
+                        for (MaterialResolver.Cost.Entry entry : standing.entries()) {
+                            remaining.merge(entry.item(), -entry.amount(), Integer::sum);
+                        }
                     }
                 }
             }
@@ -131,6 +142,9 @@ public final class BuildListManager {
         int sum = 0;
         for (Map.Entry<Item, Integer> entry : remaining.entrySet()) {
             Item item = entry.getKey();
+            if (entry.getValue() <= 0) {
+                continue;
+            }
             built.add(new Row(item, entry.getValue(), required.getOrDefault(item, entry.getValue())));
             sum += entry.getValue();
         }

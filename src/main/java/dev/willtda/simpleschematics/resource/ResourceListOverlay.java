@@ -37,7 +37,9 @@ public final class ResourceListOverlay implements IGuiOverlay {
         Minecraft mc = Minecraft.getInstance();
         ClientState state = ClientState.INSTANCE;
 
-        if (!state.isEnabled() || !state.resourceListVisible() || !SSConfig.INSTANCE.resourceListEnabled.get()) {
+        // Build mode only. The list belongs to the hologram, and Scan mode
+        // does not draw one.
+        if (!state.overlaysActive() || !state.resourceListVisible() || !SSConfig.INSTANCE.resourceListEnabled.get()) {
             return;
         }
         if (mc.player == null || mc.options.hideGui || mc.screen != null) {

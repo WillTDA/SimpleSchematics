@@ -362,16 +362,17 @@ public final class ResourceListManager {
     // ---- counting ---------------------------------------------------------
 
     /**
-     * What the selected placement already has standing, from the verifier's
-     * last full pass over it. A schematic still on your crosshair has nothing
-     * placed yet, and the first pass after selecting a build takes a moment,
-     * during which the list reads as if nothing were built.
+     * What the followed placement already has standing, from the verifier's
+     * last full pass over it. A schematic still on your crosshair, or one
+     * being read from the library, has nothing placed yet, and the first pass
+     * after selecting a build takes a moment, during which the list reads as
+     * if nothing were built.
      */
     private Map<Item, Integer> countPlaced() {
-        if (!SSConfig.INSTANCE.countPlacedBlocks.get() || ClientState.INSTANCE.hasPending()) {
+        if (!SSConfig.INSTANCE.countPlacedBlocks.get()) {
             return Map.of();
         }
-        Placement placement = PlacementManager.INSTANCE.selected();
+        Placement placement = ClientState.INSTANCE.followedPlacement();
         return placement == null ? Map.of() : SchematicVerifier.INSTANCE.resultFor(placement).placed();
     }
 
@@ -418,7 +419,7 @@ public final class ResourceListManager {
      * it is skipped here rather than counted again from its stored contents.</p>
      */
     private void countBanks(Minecraft mc) {
-        Placement placement = PlacementManager.INSTANCE.selected();
+        Placement placement = ClientState.INSTANCE.followedPlacement();
         if (placement == null || placement.banks().isEmpty()) {
             return;
         }

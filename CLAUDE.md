@@ -49,7 +49,7 @@ Useful paths: `run/logs/latest.log`, `run/crash-reports/`, `run/config/simplesch
 | `util` | Data folder resolution, import and export |
 
 `scripts/` holds standalone checks that are compiled and run by hand, not part of the
-Gradle build. `VALIDATION.md` records what has actually been verified and how.
+Gradle build.
 
 ## Rendering traps
 
@@ -81,7 +81,30 @@ entity still gets the particle-textured boxes.
 
 **Never walk the whole schematic volume per frame.** `BlockOutlines` precomputes the
 positions with an exposed face once per schematic and caches them. Invalidate that
-cache anywhere `WorldRenderer`'s baked cache is invalidated.
+cache anywhere `WorldRenderer`'s baked cache is invalidated. The per frame walk over
+that list measures each block against the camera brought into schematic space
+(`Placement.toLocalPoint`); transforming every block into the world allocated a
+`BlockPos` each, and on a large build that was a garbage collection stall every few
+seconds.
+
+**Never allocate a `BufferBuilder` per bake or per re-sort.** Its memory comes from
+the native allocator and is never freed; vanilla makes a fixed handful and reuses
+them. `BakedSchematic` keeps one bake builder, one builder per texture sheet and one
+re-sort builder that only ever grows. A fresh builder per section leaked megabytes a
+frame while walking round a build, and once the driver ran short the geometry it was
+handed was garbage: the hologram stretched off to the sky until a rebake.
+
+**Every placement bakes on its own** (`WorldRenderer.renderKey`). The sections are
+sorted from the eye in the placement's own space, so a bake shared between two copies
+of one schematic was re-sorted for one and back for the other every frame.
+
+**A shader pack widens the BLOCK vertex format.** Iris and Oculus swap
+`DefaultVertexFormat.BLOCK` for their own wider format inside every `BufferBuilder`
+while a pack is loaded, and fill the extra attributes themselves. Size anything from
+the uploaded `DrawState`'s format, never from `BLOCK`, and never upload index-only
+data over vertices in a different format: `Mesh.sort` checks and asks for a rebake.
+The shader pack path also writes depth, unlike the mod's own path, because a pack's
+later passes read the depth buffer back and paint sky over anything that left none.
 
 ## Input
 
@@ -101,6 +124,9 @@ chords, so `InputHandler.onKey` matches them on the raw `InputEvent.Key`.
   idempotent or guarded. `InputHandler.useArmed` is the guard for the modified clicks
   (shift for a chest bank, ctrl+alt to accept a block): it fires once and re-arms when
   the use key comes back up.
+- **Scan corners are right click for the start and left click for the end.**
+  `swapScanCorners` turns them round; the default has been this way since 1.0.1 and
+  the lang strings for the "set both corners" errors follow it.
 
 ## Screens
 
@@ -146,7 +172,19 @@ orphans; a small script over `src/main/java` does this in seconds.
   the verifier's pass, not layered on afterwards, so the highlight, hidden ghosts,
   resource list and build list all agree without knowing about them. Changing one does
   not restart the pass; it is picked up on the next loop rather than rebaking the
-  whole hologram.
+  whole hologram. Beds, doors and tall plants accept as a pair
+  (`InputHandler.partnerIndex`).
+- **A block can be part way there.** `MaterialResolver.standing` says what an empty pot,
+  a plain cake or a smaller candle cluster is worth against what the schematic wants;
+  the verifier counts that into `placed`, keeps the block out of the correct mask so
+  the ghost stays, and publishes it in `Diff.partial` so the build list's single layer
+  view can take it off too. It is never red.
+- **The corner lists only show in Build mode** (`ClientState.overlaysActive`), and
+  reading a schematic's list from the library goes through
+  `ClientState.setPreviewSchematicKey`, which stands in as the target only while
+  `ResourceListScreen` is up. It used to put the schematic on the crosshair, which
+  left a ghost following you and switched the lists off the placement you had selected.
+  `followedPlacement()` is what decides whether banks and placed blocks count.
 - **Client only.** The mod never sends custom packets and must work on any server. The
   `server` run config exists to prove it never touches server-side paths.
 - **A client cannot see inside a container that is not open.** Chest banks snapshot

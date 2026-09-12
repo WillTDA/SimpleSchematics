@@ -31,12 +31,24 @@ public final class ResourceListScreen extends Screen {
     private static final int NAME = 0xFF60A5FA;
 
     private final Screen parent;
+    /** A schematic to read instead of the one in the world, or null to follow the target. */
+    private final String previewKey;
     private int scroll;
     private Button resetButton;
 
     public ResourceListScreen(Screen parent) {
+        this(parent, null);
+    }
+
+    /**
+     * Reads a schematic straight from the library. It stands in as the target
+     * for exactly as long as this screen is up, so what you had selected in the
+     * world, and whichever corner lists it had on, is untouched by looking.
+     */
+    public ResourceListScreen(Screen parent, String previewKey) {
         super(Component.translatable("simpleschematics.gui.resource.title"));
         this.parent = parent;
+        this.previewKey = previewKey;
     }
 
     private int listTop() {
@@ -74,6 +86,7 @@ public final class ResourceListScreen extends Screen {
 
     @Override
     protected void init() {
+        ClientState.INSTANCE.setPreviewSchematicKey(previewKey);
         ResourceListManager.INSTANCE.refreshNow();
 
         int buttonWidth = Math.min(120, (contentWidth() - 4) / 2);
@@ -255,6 +268,12 @@ public final class ResourceListScreen extends Screen {
         int index = (int) ((mouseY - top) / ROW_HEIGHT) + scroll;
         List<ResourceListManager.Row> rows = ResourceListManager.INSTANCE.rows();
         return index >= 0 && index < rows.size() ? rows.get(index) : null;
+    }
+
+    @Override
+    public void removed() {
+        ClientState.INSTANCE.setPreviewSchematicKey(null);
+        ResourceListManager.INSTANCE.refreshNow();
     }
 
     @Override

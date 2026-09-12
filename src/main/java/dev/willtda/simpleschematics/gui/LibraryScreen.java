@@ -692,16 +692,17 @@ public final class LibraryScreen extends Screen {
         }
     }
 
+    /**
+     * Reads the selected schematic's list without picking it up. Putting it on
+     * the crosshair to do this left a ghost following you out of the screen,
+     * and moved the corner lists off the build you were working on.
+     */
     private void openResourceList() {
-        if (tab == Tab.LIBRARY) {
-            SchematicLibrary.Entry entry = selectedEntry();
-            if (entry == null || entry.get() == null) {
-                return;
-            }
-            ClientState.INSTANCE.setPendingSchematicKey(entry.key());
+        SchematicLibrary.Entry entry = selectedEntry();
+        if (entry == null || entry.get() == null) {
+            return;
         }
-        ResourceListManager.INSTANCE.refreshNow();
-        this.minecraft.setScreen(new ResourceListScreen(this));
+        this.minecraft.setScreen(new ResourceListScreen(this, entry.key()));
     }
 
     private void ensurePreview(SchematicLibrary.Entry entry, Schematic schematic) {

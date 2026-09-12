@@ -6,6 +6,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CakeBlock;
 import net.minecraft.world.level.block.CandleCakeBlock;
 import net.minecraft.world.level.block.FlowerPotBlock;
 import net.minecraft.world.level.block.SlabBlock;
@@ -13,6 +14,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BedPart;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
+import net.minecraft.world.level.block.state.properties.IntegerProperty;
 import net.minecraft.world.level.block.state.properties.SlabType;
 
 import java.util.HashMap;
@@ -169,6 +171,52 @@ public final class MaterialResolver {
 
         return Cost.of(item, amount);
     }
+
+    /**
+     * What is already standing of a block that is only part way there, or
+     * nothing if the world block is not a step towards the wanted one.
+     *
+     * <p>Some blocks are built in two goes. A potted sapling starts as an empty
+     * pot, a candle cake as a cake, four candles as one. Until the second half
+     * went in, the verifier could only call the first half wrong: the pot was
+     * painted red and stayed on both lists as if it had never been placed.
+     * This says what the first half was worth, so the pot comes off the lists
+     * and only the sapling stays on them.</p>
+     *
+     * <p>A pot with the wrong plant in it, or a bitten cake, is not a step:
+     * you have to take that back out first, so it stays wrong.</p>
+     */
+    public static Cost standing(BlockState wanted, BlockState actual) {
+        Block block = wanted.getBlock();
+        if (block instanceof FlowerPotBlock pot) {
+            return pot.getContent() != Blocks.AIR && actual.is(Blocks.FLOWER_POT)
+                    ? Cost.of(Items.FLOWER_POT, 1)
+                    : Cost.NOTHING;
+        }
+        if (block instanceof CandleCakeBlock) {
+            return actual.is(Blocks.CAKE) && actual.getValue(CakeBlock.BITES) == 0
+                    ? Cost.of(Items.CAKE, 1)
+                    : Cost.NOTHING;
+        }
+        if (block != actual.getBlock()) {
+            return Cost.NOTHING;
+        }
+        // The countable blocks: the same block with fewer of the item in it.
+        for (IntegerProperty count : COUNTS) {
+            if (wanted.hasProperty(count)) {
+                int have = actual.getValue(count);
+                int need = wanted.getValue(count);
+                Item item = resolveItem(block);
+                return have < need && item != null ? Cost.of(item, have) : Cost.NOTHING;
+            }
+        }
+        return Cost.NOTHING;
+    }
+
+    /** The properties that say how many of an item a block is holding. */
+    private static final List<IntegerProperty> COUNTS = List.of(
+            BlockStateProperties.CANDLES, BlockStateProperties.PICKLES,
+            BlockStateProperties.EGGS, BlockStateProperties.LAYERS);
 
     /**
      * The candle sitting on a candle cake. The block keeps its candle to

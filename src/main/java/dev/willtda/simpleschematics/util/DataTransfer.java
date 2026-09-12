@@ -1,7 +1,11 @@
 package dev.willtda.simpleschematics.util;
 
 import dev.willtda.simpleschematics.SimpleSchematics;
+import org.lwjgl.PointerBuffer;
+import org.lwjgl.system.MemoryStack;
+import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -9,8 +13,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -108,6 +115,65 @@ public final class DataTransfer {
         while ((read = in.read(buffer)) > 0) {
             out.write(buffer, 0, read);
         }
+    }
+
+    /**
+     * Asks for files with the system's own open dialogue and brings them in:
+     * a zip is unpacked into the data folder, a schematic is copied into the
+     * library. The same as dropping them onto the screen, for anyone who would
+     * rather browse than drag.
+     *
+     * <p>The dialogue blocks the game until it closes, which is how the
+     * platform ones work. Nothing here runs while a world is ticking on this
+     * thread, so that is only ever a pause.</p>
+     *
+     * @return the paths chosen, empty when the dialogue was cancelled
+     */
+    public static List<Path> pickFiles() {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            PointerBuffer patterns = stack.mallocPointer(3);
+            patterns.put(stack.UTF8("*.zip"));
+            patterns.put(stack.UTF8("*.litematic"));
+            patterns.put(stack.UTF8("*.sschem"));
+            patterns.flip();
+            String picked = TinyFileDialogs.tinyfd_openFileDialog("Import into Simple Schematics",
+                    DataPaths.root().toAbsolutePath() + File.separator, patterns,
+                    "Schematics and exports (*.zip, *.litematic, *.sschem)", true);
+            if (picked == null || picked.isBlank()) {
+                return List.of();
+            }
+            List<Path> files = new ArrayList<>();
+            // several files come back joined by a pipe
+            for (String path : picked.split(Pattern.quote("|"))) {
+                if (!path.isBlank()) {
+                    files.add(Path.of(path));
+                }
+            }
+            return files;
+        }
+    }
+
+    /**
+     * Brings a batch of files in, whichever way they arrived.
+     *
+     * @return how many files were brought in
+     */
+    public static int importAll(List<Path> files) {
+        int adopted = 0;
+        for (Path file : files) {
+            String name = file.getFileName().toString().toLowerCase(Locale.ROOT);
+            try {
+                if (name.endsWith(".zip")) {
+                    adopted += importFrom(file);
+                } else if (name.endsWith(".litematic") || name.endsWith(".sschem")) {
+                    adopt(file);
+                    adopted++;
+                }
+            } catch (Exception e) {
+                SimpleSchematics.LOG.error("Could not import {}", file, e);
+            }
+        }
+        return adopted;
     }
 
     /** Copies a single file into the schematics folder, used by drag and drop. */

@@ -308,22 +308,35 @@ public final class WorldRenderer {
         int drawn = 0;
         int budget = SSConfig.INSTANCE.maxHighlights.get();
 
+        // The camera is brought into the schematic's own space once, so the
+        // walk below measures each block where it already is. Transforming
+        // every exposed block into the world instead made a position object
+        // per block per frame, and on a large build that was a steady stream
+        // of garbage for the collector to stop the game over, all to throw
+        // nearly every one of them away for being out of reach.
+        Vec3 local = placement == null
+                ? camera.subtract(origin.getX(), origin.getY(), origin.getZ())
+                : placement.toLocalPoint(schematic, camera);
+
         for (int i = 0; i < outlines.count() && drawn < budget; i++) {
             int ly = outlines.y(i);
             if (ly < minLayer || ly > maxLayer) {
                 continue;
             }
+            double dy = ly + 0.5D - local.y;
+            if (dy * dy > reachSq) {
+                continue;
+            }
             int lx = outlines.x(i);
             int lz = outlines.z(i);
-            BlockPos world = placement == null
-                    ? origin.offset(lx, ly, lz)
-                    : placement.toWorld(schematic, lx, ly, lz);
-            double dx = world.getX() + 0.5D - camera.x;
-            double dy = world.getY() + 0.5D - camera.y;
-            double dz = world.getZ() + 0.5D - camera.z;
+            double dx = lx + 0.5D - local.x;
+            double dz = lz + 0.5D - local.z;
             if (dx * dx + dy * dy + dz * dz > reachSq) {
                 continue;
             }
+            BlockPos world = placement == null
+                    ? origin.offset(lx, ly, lz)
+                    : placement.toWorld(schematic, lx, ly, lz);
             lineBox(pose, lines, ScanSelection.blockBox(world).inflate(0.0015D), colour, alpha);
             drawn++;
         }
@@ -355,40 +368,24 @@ public final class WorldRenderer {
         }
     }
 
-    /**
-     * Hiding blocks you have already placed makes the bake specific to one
-     * placement, so it can no longer be shared between two copies of the same
-     * schematic. When the feature is off the plain schematic key is used and
-     * the sharing comes back.
-     */
     /** The key the ghost on your crosshair bakes under. */
     private static String pendingRenderKey() {
         String key = ClientState.INSTANCE.pendingSchematicKey();
         return key == null ? null : key + "#pending";
     }
 
+    /**
+     * Every placement bakes on its own, and so does the ghost you are holding.
+     *
+     * <p>Two copies of one schematic used to share a bake when neither was
+     * sliced or hiding its finished blocks. The geometry is sorted from the
+     * eye, though, and the eye sits somewhere different in each copy's own
+     * space, so the shared sections were re-sorted for one copy and then back
+     * for the other on every frame. Two houses from the same file made the
+     * game crawl. A bake each costs memory once and then nothing.</p>
+     */
     private static String renderKey(String schematicKey, Placement placement) {
-        if (placement == null) {
-            // The ghost you are holding is sliced by the layer view and a placed
-            // copy of the same schematic is not, so it never shares their bake.
-            return schematicKey + "#pending";
-        }
-        if (SSConfig.INSTANCE.hideCorrectBlocks.get() && SchematicVerifier.INSTANCE.isEnabled()) {
-            return schematicKey + "#" + placement.id();
-        }
-        // A sliced placement no longer looks like its untouched twin, so it
-        // needs geometry of its own rather than the shared bake.
-        if (slicing(placement)) {
-            return schematicKey + "#" + placement.id();
-        }
-        return schematicKey;
-    }
-
-    /** Whether this particular placement is the one the layer view applies to. */
-    private static boolean slicing(Placement placement) {
-        return placement != null
-                && ClientState.INSTANCE.layerView() == ClientState.LayerView.SINGLE
-                && placement == PlacementManager.INSTANCE.selected();
+        return placement == null ? schematicKey + "#pending" : schematicKey + "#" + placement.id();
     }
 
     private static String baseKey(String renderKey) {

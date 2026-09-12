@@ -166,18 +166,19 @@ public final class ConfigScreen extends Screen {
         doubleSlider("simpleschematics.config.hologramBreatheDepth", x, fieldWidth, c.hologramBreatheDepth, 0.1, 1.0);
         doubleSlider("simpleschematics.config.hologramBreathePeriod", x, fieldWidth, c.hologramBreathePeriod, 0.5, 10.0);
         action("simpleschematics.config.resetAppearance", x, fieldWidth, "simpleschematics.config.reset", () -> {
-            c.hologramOpacity.set(0.35D);
+            // the defaults from SSConfig, kept in step by hand
+            c.hologramOpacity.set(0.65D);
             c.hologramOutline.set(false);
-            c.hologramBlockOutline.set(false);
+            c.hologramBlockOutline.set(true);
             c.hologramBlockOutlineColour.set("FFFFFF");
-            c.hologramBlockOutlineOpacity.set(0.30D);
-            c.hologramBlockOutlineDistance.set(24);
+            c.hologramBlockOutlineOpacity.set(0.20D);
+            c.hologramBlockOutlineDistance.set(4);
             c.hologramNearFade.set(true);
             c.hologramFadeDistance.set(2.0D);
-            c.hologramBreathe.set(false);
+            c.hologramBreathe.set(true);
             c.hologramBreatheDepth.set(0.6D);
-            c.hologramBreathePeriod.set(2.5D);
-            c.showTargetBlockOutline.set(false);
+            c.hologramBreathePeriod.set(1.5D);
+            c.showTargetBlockOutline.set(true);
             SSConfig.SPEC.save();
             WorldRenderer.invalidateAll();
             rebuildWidgets();
@@ -245,7 +246,7 @@ public final class ConfigScreen extends Screen {
             }
         });
         action("simpleschematics.config.importData", x, fieldWidth, "simpleschematics.config.import",
-                () -> notify(Component.translatable("simpleschematics.config.import_hint").getString()));
+                () -> importFiles(DataTransfer.pickFiles()), "simpleschematics.tip.import");
 
         int buttonWidth = Math.min(120, contentWidth() / 2 - 4);
         addRenderableWidget(Button.builder(Component.translatable("gui.done"), b -> onClose())
@@ -381,6 +382,10 @@ public final class ConfigScreen extends Screen {
     }
 
     private void action(String key, int x, int width, String buttonKey, Runnable action) {
+        action(key, x, width, buttonKey, action, null);
+    }
+
+    private void action(String key, int x, int width, String buttonKey, Runnable action, String tipKey) {
         Button button = Button.builder(Component.translatable(buttonKey), b -> {
             try {
                 action.run();
@@ -388,6 +393,9 @@ public final class ConfigScreen extends Screen {
                 SimpleSchematics.LOG.error("A config action failed", e);
             }
         }).bounds(x, 0, width, 20).build();
+        if (tipKey != null) {
+            button.setTooltip(Tooltip.create(Component.translatable(tipKey)));
+        }
         rows.add(new Row(key, addWidget(button), false, null));
     }
 
@@ -491,24 +499,21 @@ public final class ConfigScreen extends Screen {
 
     @Override
     public void onFilesDrop(List<Path> files) {
-        int adopted = 0;
-        for (Path file : files) {
-            String name = file.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
-            try {
-                if (name.endsWith(".zip")) {
-                    adopted += DataTransfer.importFrom(file);
-                } else if (name.endsWith(".litematic") || name.endsWith(".sschem")) {
-                    DataTransfer.adopt(file);
-                    adopted++;
-                }
-            } catch (Exception e) {
-                SimpleSchematics.LOG.error("Could not import {}", file, e);
-            }
+        importFiles(files);
+    }
+
+    /** Dropped on the screen or chosen from the dialogue, the files go the same way. */
+    private void importFiles(List<Path> files) {
+        if (files.isEmpty()) {
+            return;
         }
+        int adopted = DataTransfer.importAll(files);
         if (adopted > 0) {
             dev.willtda.simpleschematics.schematic.SchematicLibrary.INSTANCE.refresh();
             notify(Component.translatable("simpleschematics.config.imported", adopted).getString());
             Feedback.success(Component.translatable("simpleschematics.config.imported", adopted));
+        } else {
+            notify(Component.translatable("simpleschematics.config.import_nothing").getString());
         }
     }
 

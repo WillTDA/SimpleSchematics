@@ -57,10 +57,15 @@ public final class SchematicVerifier {
      *                positions, so an unplaced door reads as one and not two
      * @param placed  what the correctly placed blocks cost, by item, in the same
      *                terms the resource list counts requirements
+     * @param partial what is already standing at each block that is only part
+     *                way there, by schematic index: the pot under a missing
+     *                plant, the cake under a missing candle. Counted into
+     *                {@code placed} as well; kept here so the build list can
+     *                take it off one layer's total
      */
     public record Diff(List<Mark> wrong, List<Mark> extra, int wrongCount, int extraCount,
                        int missing, int correct, int total, boolean truncated,
-                       Map<Item, Integer> placed) {
+                       Map<Item, Integer> placed, Map<Integer, MaterialResolver.Cost> partial) {
 
         public boolean hasAnything() {
             return wrongCount > 0 || extraCount > 0;
@@ -72,7 +77,7 @@ public final class SchematicVerifier {
     }
 
     private static final Diff EMPTY =
-            new Diff(List.of(), List.of(), 0, 0, 0, 0, 0, false, Map.of());
+            new Diff(List.of(), List.of(), 0, 0, 0, 0, 0, false, Map.of(), Map.of());
 
     private final Map<String, State> states = new HashMap<>();
     private boolean enabled = true;
@@ -185,6 +190,7 @@ public final class SchematicVerifier {
         private boolean workingTruncated;
         private BitSet workingMask;
         private Map<Item, Integer> workingPlaced = new HashMap<>();
+        private Map<Integer, MaterialResolver.Cost> workingPartial = new HashMap<>();
 
         private Diff published;
         private BitSet correctMask;
@@ -214,6 +220,7 @@ public final class SchematicVerifier {
             this.workingTruncated = false;
             this.workingMask = new BitSet(current.blockCount());
             this.workingPlaced = new HashMap<>();
+            this.workingPartial = new HashMap<>();
             this.correctMask = new BitSet(current.blockCount());
             this.dirtySections = new BitSet();
             this.published = null;
@@ -284,15 +291,27 @@ public final class SchematicVerifier {
 
                 if (accepted || sameBlock(wanted, actual)) {
                     markCorrect(index, local);
-                } else if (actualEmpty) {
+                    continue;
+                }
+                if (actualEmpty) {
                     workingMissing += MaterialResolver.costOf(local).total();
+                    continue;
+                }
+                // Part of the way there, an empty pot under a potted plant say.
+                // Not right yet, so the ghost stays and it is not hidden, but
+                // what is standing is paid for and it is not in the way.
+                MaterialResolver.Cost standing = MaterialResolver.standing(wanted, actual);
+                if (!standing.isNothing()) {
+                    standing.addTo(workingPlaced);
+                    workingPartial.put(index, standing);
+                    workingMissing += Math.max(0, MaterialResolver.costOf(local).total() - standing.total());
+                    continue;
+                }
+                workingWrongCount++;
+                if (workingWrong.size() < limit) {
+                    workingWrong.add(new Mark(world, y));
                 } else {
-                    workingWrongCount++;
-                    if (workingWrong.size() < limit) {
-                        workingWrong.add(new Mark(world, y));
-                    } else {
-                        workingTruncated = true;
-                    }
+                    workingTruncated = true;
                 }
             }
 
@@ -308,6 +327,7 @@ public final class SchematicVerifier {
                 workingTruncated = false;
                 workingMask = new BitSet(total);
                 workingPlaced = new HashMap<>();
+                workingPartial = new HashMap<>();
             }
         }
 
@@ -343,7 +363,7 @@ public final class SchematicVerifier {
             published = new Diff(List.copyOf(workingWrong), List.copyOf(workingExtra),
                     workingWrongCount, workingExtraCount,
                     workingMissing, workingCorrect, total, workingTruncated,
-                    Map.copyOf(workingPlaced));
+                    Map.copyOf(workingPlaced), Map.copyOf(workingPartial));
         }
 
         private static final Set<String> PLACEMENT_PROPERTIES = Set.of(
@@ -412,7 +432,7 @@ public final class SchematicVerifier {
             total += diff.total();
             truncated |= diff.truncated();
         }
-        return new Diff(List.of(), List.of(), wrong, extra, missing, correct, total, truncated, Map.of());
+        return new Diff(List.of(), List.of(), wrong, extra, missing, correct, total, truncated, Map.of(), Map.of());
     }
 
     /**

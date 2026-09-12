@@ -9,6 +9,7 @@ import net.minecraft.core.Vec3i;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.Collections;
 import java.util.HashSet;
@@ -216,6 +217,14 @@ public final class Placement {
         return true;
     }
 
+    public void setAccepted(int index, boolean value) {
+        if (value) {
+            accepted.add(index);
+        } else {
+            accepted.remove(index);
+        }
+    }
+
     public int acceptedCount() {
         return accepted.size();
     }
@@ -329,6 +338,53 @@ public final class Placement {
             return null;
         }
         return new BlockPos(x, y, z);
+    }
+
+    /**
+     * The local coordinate a point in the world lands on, left continuous
+     * rather than snapped to a block. This is for measuring the camera against
+     * the schematic in its own space, so that a walk over its blocks can skip
+     * the distant ones without transforming any of them. It undoes
+     * {@link #toWorld} the same way {@link #toLocal} does, on block centres
+     * rather than block corners.
+     */
+    public Vec3 toLocalPoint(Schematic schematic, Vec3 world) {
+        double w = schematic.width();
+        double l = schematic.length();
+        double rx = world.x - origin.getX();
+        double y = world.y - origin.getY();
+        double rz = world.z - origin.getZ();
+
+        double mx;
+        double mz;
+        switch (rotation) {
+            case CLOCKWISE_90 -> {
+                mx = rz;
+                mz = l - rx;
+            }
+            case CLOCKWISE_180 -> {
+                mx = w - rx;
+                mz = l - rz;
+            }
+            case COUNTERCLOCKWISE_90 -> {
+                mx = w - rz;
+                mz = rx;
+            }
+            default -> {
+                mx = rx;
+                mz = rz;
+            }
+        }
+
+        double x = mx;
+        double z = mz;
+        switch (mirror) {
+            case LEFT_RIGHT -> z = l - mz;
+            case FRONT_BACK -> x = w - mx;
+            default -> {
+            }
+        }
+        return new Vec3(x, y, z);
     }
 
     // ---- persistence ------------------------------------------------------

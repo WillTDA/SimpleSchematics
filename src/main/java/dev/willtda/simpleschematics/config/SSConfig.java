@@ -116,7 +116,7 @@ public final class SSConfig {
         menuKeyBlocksOtherMods = b.comment("Take the menu key away from anything else bound to it, so holding it as a shortcut prefix does nothing else.",
                         "Switch this off if a minimap or another mod shares the key and you would rather keep that.",
                         "The chords go through vanilla again at that point, so rebind the Simple Schematics menu key under Controls as well")
-                .define("menuKeyBlocksOtherMods", true);
+                .define("menuKeyBlocksOtherMods", false);
         maxSelectionReach = b.comment("How far away, in blocks, you can set a selection corner")
                 .defineInRange("maxSelectionReach", 128, 8, 512);
         lastMode = b.comment("The mode you were last in. Set for you, not meant to be edited by hand")
@@ -135,39 +135,39 @@ public final class SSConfig {
                 .define("selectionBoxColour", "60A5FA");
         selectionFillOpacity = b.comment("How solid the selection shading is, 0 for outline only")
                 .defineInRange("selectionFillOpacity", 0.14D, 0.0D, 0.6D);
-        swapScanCorners = b.comment("Swap which mouse button sets which corner, for anyone playing with their buttons switched")
+        swapScanCorners = b.comment("Swap which mouse button sets which corner: left click for the start and right click for the end")
                 .define("swapScanCorners", false);
         showTargetBlockOutline = b.comment("Show a white target marker in Scan mode while holding the tool")
-                .define("showTargetBlockOutline", false);
+                .define("showTargetBlockOutline", true);
         saveEntitiesByDefault = b.comment("Tick the entities box by default on the save dialogue")
                 .define("saveEntitiesByDefault", true);
         saveContainerContentsByDefault = b.comment("Tick the container contents box by default on the save dialogue")
-                .define("saveContainerContentsByDefault", false);
+                .define("saveContainerContentsByDefault", true);
         b.pop();
 
         b.comment("Build mode and holograms").push("build");
         hologramOpacity = b.comment("How solid the hologram looks")
-                .defineInRange("hologramOpacity", 0.35D, 0.0D, 1.0D);
+                .defineInRange("hologramOpacity", 0.65D, 0.0D, 1.0D);
         hologramOutline = b.comment("Draw a box around the hologram")
-                .define("hologramOutline", true);
+                .define("hologramOutline", false);
         hologramBlockOutline = b.comment("Draw an edge around every block in the hologram, so the grid is readable")
-                .define("hologramBlockOutline", false);
+                .define("hologramBlockOutline", true);
         hologramBlockOutlineColour = b.comment("Colour of those block edges, as RRGGBB")
                 .define("hologramBlockOutlineColour", "FFFFFF");
         hologramBlockOutlineOpacity = b.comment("How strong the block edges are")
-                .defineInRange("hologramBlockOutlineOpacity", 0.30D, 0.0D, 1.0D);
+                .defineInRange("hologramBlockOutlineOpacity", 0.20D, 0.0D, 1.0D);
         hologramBlockOutlineDistance = b.comment("Only draw block edges within this many blocks of you, because they are not cheap")
-                .defineInRange("hologramBlockOutlineDistance", 24, 4, 64);
+                .defineInRange("hologramBlockOutlineDistance", 4, 4, 64);
         hologramNearFade = b.comment("Fade nearby ghost surfaces so you can see and build through them")
                 .define("hologramNearFade", true);
         hologramFadeDistance = b.comment("Distance in blocks at which nearby ghosts reach full configured opacity")
                 .defineInRange("hologramFadeDistance", 2.0D, 0.5D, 8.0D);
         hologramBreathe = b.comment("Pulse the hologram opacity slowly, so the ghosts stand out from the blocks around them")
-                .define("hologramBreathe", false);
+                .define("hologramBreathe", true);
         hologramBreatheDepth = b.comment("How far each breath dips, as a fraction of the hologram opacity. 1 fades all the way out")
                 .defineInRange("hologramBreatheDepth", 0.6D, 0.1D, 1.0D);
         hologramBreathePeriod = b.comment("Seconds one breath in and out takes")
-                .defineInRange("hologramBreathePeriod", 2.5D, 0.5D, 10.0D);
+                .defineInRange("hologramBreathePeriod", 1.5D, 0.5D, 10.0D);
         highlightMismatches = b.comment("Outline blocks that are placed but are the wrong block")
                 .define("highlightMismatches", true);
         highlightExtraBlocks = b.comment("Also outline blocks that are in the way and should not be there")
@@ -218,7 +218,7 @@ public final class SSConfig {
         resourceListOffsetY = b.comment("Vertical nudge away from the chosen corner, in pixels")
                 .defineInRange("resourceListOffsetY", 4, 0, 400);
         resourceListScale = b.comment("Size of the list relative to the rest of the interface")
-                .defineInRange("resourceListScale", 1.0D, 0.4D, 2.0D);
+                .defineInRange("resourceListScale", 0.5D, 0.4D, 2.0D);
         resourceListMaxWidth = b.comment("The widest the list may get, in pixels before scaling.",
                         "The panel is measured from the names it is drawing and only trims them once it reaches this")
                 .defineInRange("resourceListMaxWidth", 240, 120, 500);

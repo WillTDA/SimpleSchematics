@@ -19,9 +19,14 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BedPart;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
@@ -46,7 +51,7 @@ import java.util.Map;
  *   <li>Shift and scroll steps through the layers in Build.</li>
  *   <li>Ctrl, Shift and scroll switches the mod on or off, as long as the
  *       activation item is in your hand.</li>
- *   <li>In Scan, left click sets the start corner and right click sets the end.</li>
+ *   <li>In Scan, right click sets the start corner and left click sets the end.</li>
  *   <li>In Build, your normal place block button drops the hologram.</li>
  * </ul>
  */
@@ -295,15 +300,15 @@ public final class InputHandler {
         }
 
         if (STATE.mode() == EditMode.SCAN) {
-            // Attack is the start corner and use is the end, unless you play
-            // with your mouse buttons switched, in which case the game sees
-            // them the other way round and this puts them back.
+            // Use is the start corner and attack is the end, the way a right
+            // click places and a left click takes away. The setting turns
+            // them round for anyone who would rather it went the other way.
             boolean swapped = SSConfig.INSTANCE.swapScanCorners.get();
-            if (event.isAttack()) {
+            if (event.isUseItem()) {
                 setCorner(!swapped);
                 event.setSwingHand(false);
                 event.setCanceled(true);
-            } else if (event.isUseItem()) {
+            } else if (event.isAttack()) {
                 setCorner(swapped);
                 event.setSwingHand(false);
                 event.setCanceled(true);
@@ -427,6 +432,12 @@ public final class InputHandler {
                 }
             }
             boolean now = placement.toggleAccepted(index);
+            // A bed or a door is one thing in two blocks, so its other half
+            // goes with it rather than wanting a click of its own.
+            int partner = partnerIndex(schematic, local);
+            if (partner >= 0) {
+                placement.setAccepted(partner, now);
+            }
             PlacementManager.INSTANCE.markDirty();
             Feedback.value(Component.translatable("simpleschematics.feedback.override"),
                     Component.translatable(now
@@ -439,11 +450,43 @@ public final class InputHandler {
     }
 
     /**
-     * Left click sets the start corner, right click sets the end.
+     * The schematic index of the other half of a two block thing at a local
+     * position, or -1 when the block there stands alone. Beds pair along
+     * their facing and doors, tall flowers and the like pair vertically. The
+     * schematic's own unrotated state is read, so the pairing is done before
+     * the placement's rotation and mirror ever come into it.
+     */
+    private static int partnerIndex(Schematic schematic, BlockPos local) {
+        BlockState state = schematic.getBlockState(local.getX(), local.getY(), local.getZ());
+        BlockPos other;
+        if (state.hasProperty(BlockStateProperties.BED_PART) && state.hasProperty(BedBlock.FACING)) {
+            Direction facing = state.getValue(BedBlock.FACING);
+            other = state.getValue(BlockStateProperties.BED_PART) == BedPart.FOOT
+                    ? local.relative(facing)
+                    : local.relative(facing.getOpposite());
+        } else if (state.hasProperty(BlockStateProperties.DOUBLE_BLOCK_HALF)) {
+            other = state.getValue(BlockStateProperties.DOUBLE_BLOCK_HALF) == DoubleBlockHalf.LOWER
+                    ? local.above()
+                    : local.below();
+        } else {
+            return -1;
+        }
+        if (!schematic.inBounds(other.getX(), other.getY(), other.getZ())) {
+            return -1;
+        }
+        // only when the other half really is the other half of this block
+        if (!schematic.getBlockState(other.getX(), other.getY(), other.getZ()).is(state.getBlock())) {
+            return -1;
+        }
+        return Placement.indexOf(schematic, other.getX(), other.getY(), other.getZ());
+    }
+
+    /**
+     * Right click sets the start corner, left click sets the end.
      *
      * <p>Vanilla re-fires the use item binding every tick it is held down, and
      * cancelling the event means the usual cooldown never gets set, so holding
-     * right click used to re-stamp the end corner twenty times a second and
+     * right click used to re-stamp its corner twenty times a second and
      * bury the hotbar in messages. Landing on the corner it is already on is
      * therefore treated as nothing having happened.</p>
      */

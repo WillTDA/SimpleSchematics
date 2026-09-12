@@ -28,7 +28,7 @@ public final class BuildListOverlay implements IGuiOverlay {
         Minecraft mc = Minecraft.getInstance();
         ClientState state = ClientState.INSTANCE;
 
-        if (!state.isEnabled() || !state.buildListVisible() || !SSConfig.INSTANCE.buildListEnabled.get()) {
+        if (!state.overlaysActive() || !state.buildListVisible() || !SSConfig.INSTANCE.buildListEnabled.get()) {
             return;
         }
         if (mc.player == null || mc.options.hideGui || mc.screen != null) {
