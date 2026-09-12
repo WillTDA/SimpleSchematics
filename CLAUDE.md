@@ -125,7 +125,7 @@ chords, so `InputHandler.onKey` matches them on the raw `InputEvent.Key`.
   (shift for a chest bank, ctrl+alt to accept a block): it fires once and re-arms when
   the use key comes back up.
 - **Scan corners are right click for the start and left click for the end.**
-  `swapScanCorners` turns them round; the default has been this way since 1.0.1 and
+  `swapScanCorners` turns them round; the default has been this way since 1.0.0 and
   the lang strings for the "set both corners" errors follow it.
 
 ## Screens
