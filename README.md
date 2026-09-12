@@ -36,6 +36,7 @@ Hold the activation item (a stick by default, changeable in the config) and the 
 | **M** + **P** | Open the placements |
 | **M** + **L** | Open the resource list |
 | **M** + **O** | Show or hide the resource list overlay |
+| **M** + **N** | Show or hide the build list |
 | **M** + **H** | Show or hide the mismatch highlight |
 | **M** + **R** | Show or hide the holograms |
 | **M** + **B** | Show or hide the outline box |
@@ -59,7 +60,7 @@ None of the second column does anything on its own, so the mod costs you exactly
 - Press **M** for the library. Each schematic gets a live 3D preview on a slow turntable. Drag it to spin it yourself, flick it and let go to send it coasting, scroll to zoom, right click to put it back. Leave it alone for a second and a half and it picks the turntable back up.
 - Choose one, then point where you want it and press your normal **use block** key. Whatever you have that bound to is what works.
 - **.** rotates and **,** mirrors the selected placement.
-- **Shift and scroll**, or **Page Up** and **Page Down**, walks the selected build up one layer at a time, with a note block hi-hat that rises in pitch as you climb. It stops at the top, and scrolling back down past the bottom returns the whole build, so there is no separate layer mode to switch on. Only the build you have selected is sliced; every other one in the world stays whole.
+- **Shift and scroll**, or **Page Up** and **Page Down**, walks the selected build up one layer at a time, with a note block hi-hat that rises in pitch as you climb. It stops at the top, and scrolling back down past the bottom returns the whole build, so there is no separate layer mode to switch on. Only the build you have selected is sliced; every other one in the world stays whole. The layer is remembered with the build, along with which build you had selected, so a relog puts you back where you were. If the schematic file changed while you were away the layer means nothing any more and the build comes back whole.
 
 ### Checking your work
 
@@ -71,9 +72,15 @@ Press **M** and **H** to switch the mismatch highlight on or off. While it is on
 
 Toggling it on reports the totals above the hotbar. The highlight respects layer mode, so stepping through layers shows you only that layer's mistakes.
 
-The comparison checks block type and placement properties such as facing, axis and slab half. Expected states follow the selected rotation and mirror. Connections, redstone power and waterlogging are ignored unless **Match the full block state** is on.
+The comparison checks block type and placement properties such as facing, axis and slab half. Expected states follow the selected rotation and mirror. Connections, redstone power, waterlogging and whether a door is open are ignored unless **Match the full block state** is on. A door hung from the other side, which the game records as facing the other way with the hinge swapped, counts as the same door.
 
 The comparison loops rather than listening for block updates, so it repairs itself after a chunk reload or a server correction. It costs a fixed budget of blocks per tick, which you can lower in the config if a very large build costs you frames.
+
+#### Accepting a block as built
+
+Sometimes you mean to differ from the schematic: a window you decided against, a door moved one block over, a tree you would rather build around. **Ctrl, alt and right click** a block with the stick out to accept it as it stands. From the next pass it counts as placed, whatever the schematic wanted there: the ghost for it goes away, it is never red or amber, and it comes off both lists. The same click on an accepted block hands it back to the schematic. A block that already matches is refused, since accepting it would change nothing.
+
+It looks in the build you have selected first and then in any other visible build the block falls inside, so one stray block in a neighbouring placement does not mean reselecting it. Accepted blocks are saved with the placement and survive a relog.
 
 ### Hologram appearance
 
@@ -84,6 +91,8 @@ Each build gets a box around it, which you can toggle with **M** and **B**. **Se
 Open **Mods > Simple Schematics > Config**. New installations use 35% opacity, fading within two blocks of the camera, and no outer hologram box. The Scan target marker is off by default. Scan selection boxes appear only while holding the tool, and F1 hides the mod's world overlays.
 
 Existing opacity and outline preferences are retained. Choose **Reset hologram appearance** in the Build section to apply the new defaults. You can then adjust **Hologram opacity**, **Fade nearby ghosts** and **Fade distance (blocks)** separately. Lowering opacity to zero hides the block ghosts; outlines and mismatch highlights have their own switches.
+
+**Breathing Ghosts** pulses the hologram opacity slowly, from full down to a dip you choose and back, so the ghosts are easy to pick out from the real blocks around them. Off by default. **Breath Depth** is how far it dips, as a fraction of the hologram opacity, and **Breath Length** is how many seconds one breath takes. It keeps time from the clock rather than the game tick, so it does not stutter with the frame rate.
 
 Ghost faces use one transparent shader, sort from the camera, keep the world's depth test, and do not write into the world's depth buffer. A small depth bias reduces flicker against real blocks without shifting the schematic. Hidden blocks and filtered layers are also removed from face culling so exposed edges remain visible.
 
@@ -98,6 +107,15 @@ Ghost faces use one transparent shader, sort from the camera, keep the world's d
 - Left click a row to tick it off, right click to clear that, and shift and scroll to correct a total by hand. Hold ctrl while scrolling to move in stacks.
 - Position, size, width and row count are all in the config. It defaults to the bottom right and shrinks itself to fit rather than running off the screen, at every GUI scale.
 
+### Build list
+
+The resource list says what to fetch. The build list says what to put down, right here, right now.
+
+- **M** and **N** shows or hides it for the build you have selected, or the schematic you are holding. Like the resource list, that choice is remembered per placement.
+- With the whole build showing it lists every block still to place across the build. Step through the layers with **shift and scroll** and it narrows to the layer in front of you, headed `Layer 3 of 12`, so you can work a layer to done and move up.
+- It is counted from the same comparison the mismatch highlight uses. A block that is there but wrong is still on the list, because the right one is not. Your inventory makes no difference to it: something you are carrying but have not placed is still to place.
+- It sits in the top right by default, in the same style as the resource list. Send both to the same corner and they stack rather than overlap. Corner, offset and row count are in the config; size, width, panel darkness and the stack breakdown follow the resource list settings.
+
 ## Your data
 
 Everything lives in one folder, `.minecraft/simpleschematics/` unless you point `dataDirectory` somewhere else in the config. Put it in OneDrive or Dropbox and your laptop and your PC share the same schematics, placements and progress.
@@ -105,7 +123,7 @@ Everything lives in one folder, `.minecraft/simpleschematics/` unless you point 
 ```
 simpleschematics/
   schematics/       your .sschem files, and any .litematic you drop in
-  placements.json   where each schematic sits, per world and per server
+  placements.json   where each schematic sits, per world and per server, with its chests and accepted blocks
   resource-lists/   how far through each build you are
 ```
 
@@ -139,7 +157,7 @@ Things to work out before writing any of it:
 
 **Container contents on servers.** A client side mod can only see inside a chest you have actually opened. Scanning a room full of unopened chests records the chests but not what is in them. The save dialogue says so at the time.
 
-**Rendering limits.** Ghosts render baked block models. Blocks that the game draws with a block entity renderer, such as beds, chests, signs and banners, have no model to bake, so they are stood in for by boxes of the block's own shape in its particle texture: a bed is a low slab in its wool colour, a chest a planks box. Fluids and saved entities are not drawn. Large builds appear a few sections at a time. Overlapping transparent surfaces may still show sorting artefacts, especially where multiple placements overlap. Shader packs and alternative renderers need testing in Minecraft.
+**Rendering limits.** Ghosts render baked block models. Blocks the game draws with a block entity renderer have no model to bake, so the vanilla ones are drawn from their real model parts and textures instead: chests with the lid shut, beds in their colour, signs and hanging signs without their text, banners with their patterns, shulker boxes, heads, decorated pots with their sherds, and conduits. A modded block of that kind is stood in for by boxes of its own shape in its particle texture, so it is the right size in the right place. Fluids and saved entities are not drawn. Large builds appear a few sections at a time. Overlapping transparent surfaces may still show sorting artefacts, especially where multiple placements overlap. Shader packs and alternative renderers need testing in Minecraft.
 
 ## Licence
 

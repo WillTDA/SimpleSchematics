@@ -48,6 +48,15 @@ public final class MaterialResolver {
             return entries.isEmpty();
         }
 
+        /** How many items this comes to, whatever they are. */
+        public int total() {
+            int sum = 0;
+            for (Entry entry : entries) {
+                sum += entry.amount();
+            }
+            return sum;
+        }
+
         /** Adds this cost to a running total of items. */
         public void addTo(Map<Item, Integer> totals) {
             for (Entry entry : entries) {

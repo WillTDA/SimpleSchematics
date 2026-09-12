@@ -48,6 +48,15 @@ public final class SchematicLibrary {
             return loaded != null;
         }
 
+        /**
+         * Identifies this version of the file. Anything remembered against a
+         * schematic, such as the layer you were on, is checked against it so
+         * a file replaced while you were away does not carry stale state.
+         */
+        public String stamp() {
+            return fileSize + ":" + lastModified;
+        }
+
         public String loadError() {
             return loadError;
         }

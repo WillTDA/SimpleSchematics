@@ -31,6 +31,8 @@ public final class PlacementManager {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     private final Map<String, List<Placement>> byWorld = new LinkedHashMap<>();
+    /** Which placement was selected in each world, by id, so a relog lands you back on it. */
+    private final Map<String, String> selectedByWorld = new LinkedHashMap<>();
     private String currentWorld = "unknown";
     private int selected = -1;
     private boolean loaded;
@@ -46,6 +48,13 @@ public final class PlacementManager {
         currentWorld = DataPaths.currentWorldKey();
         List<Placement> list = current();
         selected = list.isEmpty() ? -1 : 0;
+        String remembered = selectedByWorld.get(currentWorld);
+        for (int i = 0; i < list.size(); i++) {
+            if (list.get(i).id().equals(remembered)) {
+                selected = i;
+                break;
+            }
+        }
         SimpleSchematics.LOG.info("Restored {} placement(s) for {}", list.size(), currentWorld);
     }
 
@@ -85,6 +94,21 @@ public final class PlacementManager {
     public void select(int index) {
         List<Placement> list = current();
         this.selected = (index < 0 || index >= list.size()) ? -1 : index;
+        rememberSelection();
+    }
+
+    /** Written with the placements, so the build you were on is the one you come back to. */
+    private void rememberSelection() {
+        Placement placement = selected();
+        String id = placement == null ? null : placement.id();
+        if (!java.util.Objects.equals(selectedByWorld.get(currentWorld), id)) {
+            if (id == null) {
+                selectedByWorld.remove(currentWorld);
+            } else {
+                selectedByWorld.put(currentWorld, id);
+            }
+            markDirty();
+        }
     }
 
     public void select(Placement placement) {
@@ -95,6 +119,7 @@ public final class PlacementManager {
         List<Placement> list = current();
         list.add(placement);
         selected = list.size() - 1;
+        rememberSelection();
         markDirty();
     }
 
@@ -106,6 +131,7 @@ public final class PlacementManager {
             if (selected >= list.size()) {
                 selected = list.size() - 1;
             }
+            rememberSelection();
             markDirty();
         }
     }
@@ -113,6 +139,7 @@ public final class PlacementManager {
     public void clearCurrentWorld() {
         current().clear();
         selected = -1;
+        rememberSelection();
         markDirty();
     }
 
@@ -125,6 +152,7 @@ public final class PlacementManager {
     public void load() {
         loaded = true;
         byWorld.clear();
+        selectedByWorld.clear();
         Path file = DataPaths.placementsFile();
         if (!Files.exists(file)) {
             return;
@@ -146,6 +174,11 @@ public final class PlacementManager {
                     }
                 }
                 byWorld.put(entry.getKey(), list);
+            }
+            if (root.has("selected")) {
+                for (Map.Entry<String, JsonElement> entry : root.getAsJsonObject("selected").entrySet()) {
+                    selectedByWorld.put(entry.getKey(), entry.getValue().getAsString());
+                }
             }
         } catch (Exception e) {
             SimpleSchematics.LOG.error("Could not read the saved placements", e);
@@ -171,6 +204,13 @@ public final class PlacementManager {
             worlds.add(entry.getKey(), array);
         }
         root.add("worlds", worlds);
+        JsonObject selectedIds = new JsonObject();
+        for (Map.Entry<String, String> entry : selectedByWorld.entrySet()) {
+            if (byWorld.containsKey(entry.getKey()) && !byWorld.get(entry.getKey()).isEmpty()) {
+                selectedIds.addProperty(entry.getKey(), entry.getValue());
+            }
+        }
+        root.add("selected", selectedIds);
 
         Path file = DataPaths.placementsFile();
         Path temp = file.resolveSibling(file.getFileName() + ".tmp");

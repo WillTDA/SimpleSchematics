@@ -7,6 +7,8 @@ import dev.willtda.simpleschematics.placement.PlacementManager;
 import dev.willtda.simpleschematics.render.WorldRenderer;
 import dev.willtda.simpleschematics.render.HologramShader;
 import dev.willtda.simpleschematics.render.SchematicVerifier;
+import dev.willtda.simpleschematics.resource.BuildListManager;
+import dev.willtda.simpleschematics.resource.BuildListOverlay;
 import dev.willtda.simpleschematics.resource.ResourceListManager;
 import dev.willtda.simpleschematics.resource.ResourceListOverlay;
 import dev.willtda.simpleschematics.schematic.SchematicLibrary;
@@ -14,6 +16,7 @@ import net.minecraftforge.client.ConfigScreenHandler;
 import net.minecraftforge.client.event.RegisterGuiOverlaysEvent;
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
 import net.minecraftforge.client.event.RegisterClientReloadListenersEvent;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
 import net.minecraftforge.client.event.ScreenEvent;
 import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay;
@@ -65,6 +68,9 @@ public final class SimpleSchematicsClient {
 
     private static void onRegisterOverlays(RegisterGuiOverlaysEvent event) {
         event.registerAbove(VanillaGuiOverlay.HOTBAR.id(), "resource_list", ResourceListOverlay.INSTANCE);
+        // After the resource list, so it can stack past it when they share a corner.
+        event.registerAbove(new ResourceLocation(SimpleSchematics.MOD_ID, "resource_list"), "build_list",
+                BuildListOverlay.INSTANCE);
     }
 
     // ---- world lifecycle --------------------------------------------------
@@ -74,6 +80,7 @@ public final class SimpleSchematicsClient {
         SchematicLibrary.INSTANCE.refresh();
         PlacementManager.INSTANCE.onJoinWorld();
         ResourceListManager.INSTANCE.invalidateAll();
+        BuildListManager.INSTANCE.invalidateAll();
         WorldRenderer.invalidateAll();
         SchematicVerifier.INSTANCE.clear();
         ClientState.INSTANCE.cancelPending();

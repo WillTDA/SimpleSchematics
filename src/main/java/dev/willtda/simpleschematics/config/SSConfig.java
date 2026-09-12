@@ -53,6 +53,9 @@ public final class SSConfig {
     public final ForgeConfigSpec.IntValue hologramBlockOutlineDistance;
     public final ForgeConfigSpec.BooleanValue hologramNearFade;
     public final ForgeConfigSpec.DoubleValue hologramFadeDistance;
+    public final ForgeConfigSpec.BooleanValue hologramBreathe;
+    public final ForgeConfigSpec.DoubleValue hologramBreatheDepth;
+    public final ForgeConfigSpec.DoubleValue hologramBreathePeriod;
     public final ForgeConfigSpec.BooleanValue highlightMismatches;
     public final ForgeConfigSpec.IntValue hologramRenderDistance;
     public final ForgeConfigSpec.BooleanValue highlightExtraBlocks;
@@ -86,6 +89,13 @@ public final class SSConfig {
     public final ForgeConfigSpec.BooleanValue hideCompletedRows;
     public final ForgeConfigSpec.BooleanValue countPlacedBlocks;
     public final ForgeConfigSpec.BooleanValue showBuildName;
+
+    // ---- build list -------------------------------------------------------
+    public final ForgeConfigSpec.BooleanValue buildListEnabled;
+    public final ForgeConfigSpec.EnumValue<Anchor> buildListAnchor;
+    public final ForgeConfigSpec.IntValue buildListOffsetX;
+    public final ForgeConfigSpec.IntValue buildListOffsetY;
+    public final ForgeConfigSpec.IntValue buildListMaxRows;
 
     public enum Anchor {
         TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT
@@ -152,6 +162,12 @@ public final class SSConfig {
                 .define("hologramNearFade", true);
         hologramFadeDistance = b.comment("Distance in blocks at which nearby ghosts reach full configured opacity")
                 .defineInRange("hologramFadeDistance", 2.0D, 0.5D, 8.0D);
+        hologramBreathe = b.comment("Pulse the hologram opacity slowly, so the ghosts stand out from the blocks around them")
+                .define("hologramBreathe", false);
+        hologramBreatheDepth = b.comment("How far each breath dips, as a fraction of the hologram opacity. 1 fades all the way out")
+                .defineInRange("hologramBreatheDepth", 0.6D, 0.1D, 1.0D);
+        hologramBreathePeriod = b.comment("Seconds one breath in and out takes")
+                .defineInRange("hologramBreathePeriod", 2.5D, 0.5D, 10.0D);
         highlightMismatches = b.comment("Outline blocks that are placed but are the wrong block")
                 .define("highlightMismatches", true);
         highlightExtraBlocks = b.comment("Also outline blocks that are in the way and should not be there")
@@ -225,6 +241,21 @@ public final class SSConfig {
                 .define("countPlacedBlocks", true);
         showBuildName = b.comment("Name the build the list is following, above the list itself")
                 .define("showBuildName", true);
+        b.pop();
+
+        b.comment("Build list", "The panel that says what is still to place for the layer you are looking at.",
+                        "Size, width, panel darkness and the stack breakdown are shared with the resource list")
+                .push("build_list");
+        buildListEnabled = b.comment("Show the build list overlay when it is switched on for a build")
+                .define("buildListEnabled", true);
+        buildListAnchor = b.comment("Which corner the list sits in. Sharing a corner with the resource list stacks the two")
+                .defineEnum("buildListAnchor", Anchor.TOP_RIGHT);
+        buildListOffsetX = b.comment("Horizontal nudge away from the chosen corner, in pixels")
+                .defineInRange("buildListOffsetX", 4, 0, 400);
+        buildListOffsetY = b.comment("Vertical nudge away from the chosen corner, in pixels")
+                .defineInRange("buildListOffsetY", 4, 0, 400);
+        buildListMaxRows = b.comment("How many item rows to show at once")
+                .defineInRange("buildListMaxRows", 10, 1, 40);
         b.pop();
     }
 

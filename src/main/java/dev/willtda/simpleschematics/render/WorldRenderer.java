@@ -14,6 +14,7 @@ import dev.willtda.simpleschematics.placement.PlacementManager;
 import dev.willtda.simpleschematics.resource.Banks;
 import dev.willtda.simpleschematics.schematic.Schematic;
 import dev.willtda.simpleschematics.schematic.SchematicLibrary;
+import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -160,7 +161,7 @@ public final class WorldRenderer {
 
     private static void drawHolograms(Minecraft mc, PoseStack pose, Matrix4f projection,
                                       Vec3 camera, ClientState state) {
-        float alpha = SSConfig.INSTANCE.hologramOpacity.get().floatValue();
+        float alpha = SSConfig.INSTANCE.hologramOpacity.get().floatValue() * breath();
         double maxDistance = SSConfig.INSTANCE.hologramRenderDistance.get();
         boolean outline = SSConfig.INSTANCE.hologramOutline.get();
 
@@ -215,6 +216,28 @@ public final class WorldRenderer {
                 source.endBatch(RenderType.lines());
             }
         }
+    }
+
+    /**
+     * How far through a breath the hologram is: 1 at the top, dipping to
+     * 1 minus the depth at the bottom, and 1 whenever breathing is off.
+     *
+     * <p>A ghost that slowly pulses is far easier to pick out from the real
+     * blocks around it than one that sits still at a fixed opacity, which is
+     * the whole point. It rides on the alpha the sections are drawn with, so
+     * it reaches the shader pack path through the colour modulator as well.
+     * The wall clock rather than the game tick, so it keeps breathing while
+     * the game is paused or the tick rate falls over.</p>
+     */
+    private static float breath() {
+        if (!SSConfig.INSTANCE.hologramBreathe.get()) {
+            return 1.0F;
+        }
+        double period = SSConfig.INSTANCE.hologramBreathePeriod.get() * 1000.0D;
+        double phase = (Util.getMillis() % (long) period) / period * Math.PI * 2.0D;
+        // cosine from 0 to 1, so the top of the breath is full opacity
+        float dip = (float) ((1.0D - Math.cos(phase)) * 0.5D);
+        return 1.0F - dip * SSConfig.INSTANCE.hologramBreatheDepth.get().floatValue();
     }
 
     /**

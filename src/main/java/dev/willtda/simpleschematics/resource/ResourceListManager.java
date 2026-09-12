@@ -442,7 +442,8 @@ public final class ResourceListManager {
         }
     }
 
-    private Map<Item, Integer> requiredFor(String key, Schematic schematic) {
+    /** Everything the whole schematic costs, by item. Cached against the key, shared with the build list. */
+    Map<Item, Integer> requiredFor(String key, Schematic schematic) {
         Map<Item, Integer> cached = requiredCache.get(key);
         if (cached != null) {
             return cached;

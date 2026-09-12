@@ -118,6 +118,13 @@ public final class ConfigScreen extends Screen {
                 live.isEnabled()
                         ? "simpleschematics.tip.live.resource_list.none"
                         : "simpleschematics.tip.live.off");
+        liveToggle("simpleschematics.config.buildListVisible", x, fieldWidth,
+                live::buildListVisible, live::toggleBuildList,
+                "simpleschematics.tip.live.build_list",
+                () -> live.isEnabled() && live.targetSchematicKey() != null,
+                live.isEnabled()
+                        ? "simpleschematics.tip.live.build_list.none"
+                        : "simpleschematics.tip.live.off");
         liveToggle("simpleschematics.config.highlightVisible", x, fieldWidth,
                 SchematicVerifier.INSTANCE::isEnabled, SchematicVerifier.INSTANCE::toggle,
                 "simpleschematics.tip.live.highlight", live::isEnabled, "simpleschematics.tip.live.off");
@@ -154,6 +161,10 @@ public final class ConfigScreen extends Screen {
                 c.hologramBlockOutlineDistance, 4, 64);
         toggle("simpleschematics.config.hologramNearFade", x, fieldWidth, c.hologramNearFade);
         doubleSlider("simpleschematics.config.hologramFadeDistance", x, fieldWidth, c.hologramFadeDistance, 0.5, 8.0);
+        toggle("simpleschematics.config.hologramBreathe", x, fieldWidth, c.hologramBreathe,
+                "simpleschematics.tip.breathe");
+        doubleSlider("simpleschematics.config.hologramBreatheDepth", x, fieldWidth, c.hologramBreatheDepth, 0.1, 1.0);
+        doubleSlider("simpleschematics.config.hologramBreathePeriod", x, fieldWidth, c.hologramBreathePeriod, 0.5, 10.0);
         action("simpleschematics.config.resetAppearance", x, fieldWidth, "simpleschematics.config.reset", () -> {
             c.hologramOpacity.set(0.35D);
             c.hologramOutline.set(false);
@@ -163,6 +174,9 @@ public final class ConfigScreen extends Screen {
             c.hologramBlockOutlineDistance.set(24);
             c.hologramNearFade.set(true);
             c.hologramFadeDistance.set(2.0D);
+            c.hologramBreathe.set(false);
+            c.hologramBreatheDepth.set(0.6D);
+            c.hologramBreathePeriod.set(2.5D);
             c.showTargetBlockOutline.set(false);
             SSConfig.SPEC.save();
             WorldRenderer.invalidateAll();
@@ -207,6 +221,15 @@ public final class ConfigScreen extends Screen {
         toggle("simpleschematics.config.countPlacedBlocks", x, fieldWidth, c.countPlacedBlocks,
                 "simpleschematics.tip.count_placed");
         toggle("simpleschematics.config.showBuildName", x, fieldWidth, c.showBuildName);
+
+        heading("simpleschematics.config.section.build_list");
+        toggle("simpleschematics.config.buildListEnabled", x, fieldWidth, c.buildListEnabled,
+                "simpleschematics.tip.build_list");
+        choice("simpleschematics.config.buildListAnchor", x, fieldWidth, c.buildListAnchor, SSConfig.Anchor.values(),
+                "simpleschematics.tip.build_list.anchor");
+        intSlider("simpleschematics.config.buildListOffsetX", x, fieldWidth, c.buildListOffsetX, 0, 200);
+        intSlider("simpleschematics.config.buildListOffsetY", x, fieldWidth, c.buildListOffsetY, 0, 200);
+        intSlider("simpleschematics.config.buildListMaxRows", x, fieldWidth, c.buildListMaxRows, 1, 40);
 
         heading("simpleschematics.config.section.data");
         action("simpleschematics.config.openFolder", x, fieldWidth, "simpleschematics.config.open",

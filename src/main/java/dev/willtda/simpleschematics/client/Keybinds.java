@@ -37,6 +37,7 @@ public final class Keybinds {
     public static final KeyMapping RESOURCE_LIST = key("key.simpleschematics.resource_list", InputConstants.KEY_O);
     public static final KeyMapping HIGHLIGHT = key("key.simpleschematics.highlight", InputConstants.KEY_H);
     public static final KeyMapping TOGGLE_BOX = key("key.simpleschematics.toggle_box", InputConstants.KEY_B);
+    public static final KeyMapping BUILD_LIST = key("key.simpleschematics.build_list", InputConstants.KEY_N);
 
     // ---- plain keys, no prefix --------------------------------------------
 
@@ -50,7 +51,7 @@ public final class Keybinds {
     /** Order matters only in that the first match wins, so keep them distinct. */
     private static final List<KeyMapping> CHORDS = List.of(
             PLACEMENTS, RESOURCE_LIST_SCREEN, SETTINGS,
-            TOGGLE_RENDERING, TOGGLE_MOD, RESOURCE_LIST, HIGHLIGHT, TOGGLE_BOX);
+            TOGGLE_RENDERING, TOGGLE_MOD, RESOURCE_LIST, HIGHLIGHT, TOGGLE_BOX, BUILD_LIST);
 
     private static final List<KeyMapping> PLAIN = List.of(
             CONFIRM, CLEAR, ROTATE, MIRROR, LAYER_NEXT, LAYER_PREVIOUS);

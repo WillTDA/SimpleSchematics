@@ -9,6 +9,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.client.renderer.texture.TextureAtlas;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.RenderShape;
@@ -18,6 +20,7 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
 import java.util.*;
+import java.util.function.Function;
 
 /** Section-sized cached geometry, with one transparent pass and camera-relative sorting. */
 public final class BakedSchematic implements AutoCloseable {
@@ -190,20 +193,12 @@ public final class BakedSchematic implements AutoCloseable {
             Section section = sections.get(sortCursor++ % sections.size());
             if (sortCursor == Integer.MAX_VALUE) sortCursor = 0;
             if (!section.queued && section.overlaps(layerMin, layerMax) && section.needsSort()) {
-                try {
-                    section.sort();
-                } catch (Exception e) {
-                    // A section that cannot be re-sorted still draws, just in
-                    // its old order. Losing the whole frame would be worse.
-                    section.sortState = null;
-                    section.sortVertices = 0;
-                    SimpleSchematics.LOG.error("Could not re-sort a section of {}", schematic.meta().name, e);
-                }
+                section.sort();
                 remaining--;
             }
         }
         List<Section> ordered = sections.stream()
-                .filter(s -> !s.queued && s.buffer != null && s.overlaps(layerMin, layerMax))
+                .filter(s -> !s.queued && s.hasGeometry() && s.overlaps(layerMin, layerMax))
                 .sorted(Comparator.comparingDouble(Section::distanceSquared).reversed()).toList();
         if (ordered.isEmpty()) return;
 
@@ -219,9 +214,9 @@ public final class BakedSchematic implements AutoCloseable {
                 // No vanilla render-type setup may run here: solid/cutout types
                 // disable blending or write depth and would undo the ghost pass.
                 for (Section section : ordered) {
-                    section.buffer.bind();
-                    section.buffer.drawWithShader(new Matrix4f(base).translate(section.x, section.y, section.z), projection, shader);
+                    section.blocks.draw(section, base, projection, shader);
                 }
+                drawSheets(ordered, base, projection, shader);
             }
         } finally {
             VertexBuffer.unbind();
@@ -258,13 +253,33 @@ public final class BakedSchematic implements AutoCloseable {
             RenderSystem.polygonOffset(-1.0F, -2.0F);
             RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, alpha);
             for (Section section : ordered) {
-                section.buffer.bind();
-                section.buffer.drawWithShader(
-                        new Matrix4f(base).translate(section.x, section.y, section.z), projection, shader);
+                section.blocks.draw(section, base, projection, shader);
             }
+            drawSheets(ordered, base, projection, shader);
         } finally {
             RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
             type.clearRenderState();
+        }
+    }
+
+    /**
+     * The chest and bed meshes, drawn after the block geometry with their own
+     * texture sheet bound. The shader reads its sampler from the render
+     * system on every draw, so swapping the texture between draws is all it
+     * takes, and the block atlas goes back at the end for whoever is next.
+     */
+    private static void drawSheets(List<Section> ordered, Matrix4f base, Matrix4f projection, ShaderInstance shader) {
+        boolean swapped = false;
+        for (Section section : ordered) {
+            for (Mesh mesh : section.sheets) {
+                if (mesh.buffer == null) continue;
+                RenderSystem.setShaderTexture(0, mesh.texture);
+                swapped = true;
+                mesh.draw(section, base, projection, shader);
+            }
+        }
+        if (swapped) {
+            RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_BLOCKS);
         }
     }
 
@@ -276,26 +291,26 @@ public final class BakedSchematic implements AutoCloseable {
         sections.clear();
     }
 
-    private final class Section {
-        final int x, y, z;
+    /**
+     * One uploaded buffer and what it takes to re-sort it. A section has one
+     * for its block geometry and one more for each texture sheet a chest or
+     * bed in it needed.
+     */
+    private final class Mesh {
+        final ResourceLocation texture;
         VertexBuffer buffer;
         BufferBuilder.SortState sortState;
         Vector3f sortedEye;
         /** Vertices behind {@link #sortState}; needed to size the re-sort buffer. */
         int sortVertices;
-        boolean queued;
 
-        Section(int x, int y, int z) { this.x = x; this.y = y; this.z = z; }
-        boolean overlaps(int min, int max) { return y <= max && y + SECTION - 1 >= min; }
-        boolean straddles(int min, int max) {
-            int top = y + SECTION - 1;
-            return (min > y && min <= top) || (max >= y && max < top);
-        }
-        double distanceSquared() { return eye.distanceSquared(x + 8.0F, y + 8.0F, z + 8.0F); }
+        Mesh(ResourceLocation texture) { this.texture = texture; }
+
         boolean needsSort() {
             return buffer != null && sortState != null
                     && (sortedEye == null || sortedEye.distanceSquared(eye) >= 0.25F);
         }
+
         void discard() {
             if (buffer != null) buffer.close();
             buffer = null;
@@ -303,6 +318,7 @@ public final class BakedSchematic implements AutoCloseable {
             sortedEye = null;
             sortVertices = 0;
         }
+
         /**
          * Re-sorts the existing quads for the current eye without rebuilding any
          * block models.
@@ -314,15 +330,84 @@ public final class BakedSchematic implements AutoCloseable {
          * makes the slice throw. Vanilla never trips over this because chunk
          * re-sorts borrow one of the big pooled builders.</p>
          */
-        void sort() {
+        void sort(Section section) {
             BufferBuilder indices = new BufferBuilder(sortCapacity(sortVertices));
             indices.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
             indices.restoreSortState(sortState);
-            indices.setQuadSorting(VertexSorting.byDistance(eye.x - x, eye.y - y, eye.z - z));
+            indices.setQuadSorting(VertexSorting.byDistance(eye.x - section.x, eye.y - section.y, eye.z - section.z));
             buffer.bind();
             try { buffer.upload(indices.end()); }
             finally { VertexBuffer.unbind(); }
             sortedEye = new Vector3f(eye);
+        }
+
+        /** Takes the finished builder, sorted from the current eye, and uploads it. Empty geometry leaves no buffer. */
+        void upload(Section section, BufferBuilder builder) {
+            builder.setQuadSorting(VertexSorting.byDistance(eye.x - section.x, eye.y - section.y, eye.z - section.z));
+            BufferBuilder.SortState sorted = builder.getSortState();
+            BufferBuilder.RenderedBuffer rendered = builder.end();
+            if (rendered.isEmpty()) { rendered.release(); return; }
+            int vertices = rendered.drawState().vertexCount();
+            buffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
+            buffer.bind();
+            // upload() releases the rendered buffer, so read the count first
+            try { buffer.upload(rendered); }
+            finally { VertexBuffer.unbind(); }
+            sortState = sorted;
+            sortVertices = vertices;
+            sortedEye = new Vector3f(eye);
+        }
+
+        void draw(Section section, Matrix4f base, Matrix4f projection, ShaderInstance shader) {
+            if (buffer == null) return;
+            buffer.bind();
+            buffer.drawWithShader(new Matrix4f(base).translate(section.x, section.y, section.z), projection, shader);
+        }
+    }
+
+    private final class Section {
+        final int x, y, z;
+        final Mesh blocks = new Mesh(TextureAtlas.LOCATION_BLOCKS);
+        final List<Mesh> sheets = new ArrayList<>();
+        boolean queued;
+
+        Section(int x, int y, int z) { this.x = x; this.y = y; this.z = z; }
+        boolean overlaps(int min, int max) { return y <= max && y + SECTION - 1 >= min; }
+        boolean straddles(int min, int max) {
+            int top = y + SECTION - 1;
+            return (min > y && min <= top) || (max >= y && max < top);
+        }
+        double distanceSquared() { return eye.distanceSquared(x + 8.0F, y + 8.0F, z + 8.0F); }
+        boolean hasGeometry() {
+            if (blocks.buffer != null) return true;
+            for (Mesh mesh : sheets) if (mesh.buffer != null) return true;
+            return false;
+        }
+        boolean needsSort() {
+            if (blocks.needsSort()) return true;
+            for (Mesh mesh : sheets) if (mesh.needsSort()) return true;
+            return false;
+        }
+        void discard() {
+            blocks.discard();
+            for (Mesh mesh : sheets) mesh.discard();
+            sheets.clear();
+        }
+        void sort() {
+            sortMesh(blocks);
+            for (Mesh mesh : sheets) sortMesh(mesh);
+        }
+        private void sortMesh(Mesh mesh) {
+            if (!mesh.needsSort()) return;
+            try {
+                mesh.sort(this);
+            } catch (Exception e) {
+                // A mesh that cannot be re-sorted still draws, just in its
+                // old order. Losing the whole frame would be worse.
+                mesh.sortState = null;
+                mesh.sortVertices = 0;
+                SimpleSchematics.LOG.error("Could not re-sort a section of {}", schematic.meta().name, e);
+            }
         }
         void bake() {
             discard();
@@ -332,6 +417,18 @@ public final class BakedSchematic implements AutoCloseable {
             PoseStack pose = new PoseStack();
             BufferBuilder builder = new BufferBuilder(262144);
             builder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
+            // Builders for the chest and bed sheets, made only when something
+            // asks for them, since most sections have neither.
+            Map<ResourceLocation, BufferBuilder> sheetBuilders = new LinkedHashMap<>();
+            Function<ResourceLocation, VertexConsumer> sheetFor = texture -> {
+                // a conduit's shell lives on the block atlas, so it joins the block mesh
+                if (texture.equals(TextureAtlas.LOCATION_BLOCKS)) return builder;
+                return sheetBuilders.computeIfAbsent(texture, t -> {
+                    BufferBuilder b = new BufferBuilder(16384);
+                    b.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
+                    return b;
+                });
+            };
             BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
             try {
                 for (int by = Math.max(y, layerMin); by < Math.min(y + SECTION, layerMax + 1); by++) {
@@ -347,7 +444,7 @@ public final class BakedSchematic implements AutoCloseable {
                                 if (state.getRenderShape() != RenderShape.MODEL) {
                                     // beds, chests and the like: a block entity renderer's job, stood in for
                                     EntityBlockStandIn.bake(view, state, cursor, pose, builder,
-                                            model.getParticleIcon(ModelData.EMPTY));
+                                            model.getParticleIcon(ModelData.EMPTY), sheetFor);
                                     continue;
                                 }
                                 random.setSeed(state.getSeed(cursor));
@@ -361,21 +458,15 @@ public final class BakedSchematic implements AutoCloseable {
                     }
                 }
                 // Every material is translucent in a hologram, not just glass.
-                builder.setQuadSorting(VertexSorting.byDistance(eye.x - x, eye.y - y, eye.z - z));
-                BufferBuilder.SortState sorted = builder.getSortState();
-                BufferBuilder.RenderedBuffer rendered = builder.end();
-                if (rendered.isEmpty()) { rendered.release(); return; }
-                int vertices = rendered.drawState().vertexCount();
-                buffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
-                buffer.bind();
-                // upload() releases the rendered buffer, so read the count first
-                try { buffer.upload(rendered); }
-                finally { VertexBuffer.unbind(); }
-                sortState = sorted;
-                sortVertices = vertices;
-                sortedEye = new Vector3f(eye);
+                blocks.upload(this, builder);
+                for (Map.Entry<ResourceLocation, BufferBuilder> entry : sheetBuilders.entrySet()) {
+                    Mesh mesh = new Mesh(entry.getKey());
+                    mesh.upload(this, entry.getValue());
+                    if (mesh.buffer != null) sheets.add(mesh);
+                }
             } catch (Exception e) {
                 if (builder.building()) builder.end().release();
+                for (BufferBuilder b : sheetBuilders.values()) if (b.building()) b.end().release();
                 throw e;
             }
         }

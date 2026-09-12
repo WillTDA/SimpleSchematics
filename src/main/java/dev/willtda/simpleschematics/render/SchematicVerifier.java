@@ -8,6 +8,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.DoorBlock;
 import net.minecraft.world.level.block.SlabBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
@@ -51,8 +52,10 @@ public final class SchematicVerifier {
     /**
      * A finished comparison, safe to read from the render thread.
      *
-     * @param placed what the correctly placed blocks cost, by item, in the same
-     *               terms the resource list counts requirements
+     * @param missing what the empty positions still cost, in items rather than
+     *                positions, so an unplaced door reads as one and not two
+     * @param placed  what the correctly placed blocks cost, by item, in the same
+     *                terms the resource list counts requirements
      */
     public record Diff(List<Mark> wrong, List<Mark> extra, int wrongCount, int extraCount,
                        int missing, int correct, int total, boolean truncated,
@@ -262,9 +265,12 @@ public final class SchematicVerifier {
                 BlockState actual = level.getBlockState(world);
                 boolean wantedAir = wanted.isAir();
                 boolean actualEmpty = actual.isAir() || actual.canBeReplaced();
+                // A block you have accepted as built is taken at its word: it
+                // counts as standing, costs nothing more, and is never in the way.
+                boolean accepted = placement.isAccepted(index);
 
                 if (wantedAir) {
-                    if (!actualEmpty) {
+                    if (!actualEmpty && !accepted) {
                         workingExtraCount++;
                         if (workingExtra.size() < limit) {
                             workingExtra.add(new Mark(world, y));
@@ -275,10 +281,10 @@ public final class SchematicVerifier {
                     continue;
                 }
 
-                if (sameBlock(wanted, actual)) {
+                if (accepted || sameBlock(wanted, actual)) {
                     markCorrect(index, local);
                 } else if (actualEmpty) {
-                    workingMissing++;
+                    workingMissing += MaterialResolver.costOf(local).total();
                 } else {
                     workingWrongCount++;
                     if (workingWrong.size() < limit) {
@@ -346,6 +352,7 @@ public final class SchematicVerifier {
         private static boolean sameBlock(BlockState wanted, BlockState actual) {
             if (SSConfig.INSTANCE.strictStateMatch.get()) return wanted.equals(actual);
             if (wanted.getBlock() != actual.getBlock()) return false;
+            if (wanted.getBlock() instanceof DoorBlock && flippedDoor(wanted, actual)) return true;
             for (Property<?> property : wanted.getProperties()) {
                 if ((PLACEMENT_PROPERTIES.contains(property.getName())
                         || (wanted.getBlock() instanceof SlabBlock && property.getName().equals("type")))
@@ -355,6 +362,28 @@ public final class SchematicVerifier {
             }
             return true;
         }
+    }
+
+    /**
+     * The same door hung from the other side.
+     *
+     * <p>A door takes its facing from where you stood when you placed it, and
+     * the game swaps the hinge to keep it on the same post, so a door put in
+     * from inside the house comes out facing the other way from one put in
+     * from the garden. The two are the same door on the same hinge, opening the
+     * same way, with the closed panel flush against the other edge of the
+     * block. Calling that wrong meant a red door and a closed ghost drawn over
+     * an open one for anyone who happened to be indoors at the time.</p>
+     */
+    private static boolean flippedDoor(BlockState wanted, BlockState actual) {
+        return wanted.getValue(DoorBlock.FACING) == actual.getValue(DoorBlock.FACING).getOpposite()
+                && wanted.getValue(DoorBlock.HINGE) != actual.getValue(DoorBlock.HINGE)
+                && wanted.getValue(DoorBlock.HALF) == actual.getValue(DoorBlock.HALF);
+    }
+
+    /** Whether a world block satisfies what the schematic wants, by the same rule the pass uses. */
+    public static boolean matches(BlockState wanted, BlockState actual) {
+        return State.sameBlock(wanted, actual);
     }
 
     /** Totals across every placement currently being checked. */
@@ -378,6 +407,17 @@ public final class SchematicVerifier {
             truncated |= diff.truncated();
         }
         return new Diff(List.of(), List.of(), wrong, extra, missing, correct, total, truncated, Map.of());
+    }
+
+    /**
+     * Which blocks of a placement were standing correctly at the last full
+     * pass, indexed the way the schematic stores them, or null before the
+     * first pass has finished. The build list reads this to say what is left.
+     * Read only: the verifier replaces the set rather than editing it.
+     */
+    public BitSet correctMaskFor(Placement placement) {
+        State state = states.get(placement.id());
+        return state == null || state.published == null ? null : state.correctMask;
     }
 
     /** True once at least one placement has finished a pass. */

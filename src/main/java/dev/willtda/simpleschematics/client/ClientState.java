@@ -38,11 +38,14 @@ public final class ClientState {
 
     private LayerView layerView = LayerView.ALL;
     private int layer;
+    /** The placement the layer state currently belongs to, so a change of selection restores its own. */
+    private String layerOwner;
 
     /** Set while a schematic follows your crosshair, before you commit to a spot. */
     private String pendingSchematicKey;
 
     private boolean resourceListVisible;
+    private boolean buildListVisible;
     private boolean renderHolograms = true;
 
     private ClientState() {
@@ -183,6 +186,48 @@ public final class ClientState {
         if (layerView == LayerView.SINGLE) {
             layer = Math.max(0, Math.min(layer, maxLayer()));
         }
+        storeLayer();
+    }
+
+    /**
+     * Keeps the layer with the build it belongs to. Called every tick: when
+     * the selection moves to another placement, that placement's remembered
+     * layer comes back, and a schematic on your crosshair always starts whole.
+     *
+     * <p>The layer is remembered against a stamp of the schematic file. If
+     * the file was replaced while you were away the layer means nothing any
+     * more, so it falls back to everything rather than to a slice of a build
+     * that may not have that many layers.</p>
+     */
+    public void syncLayer() {
+        Placement placement = pendingSchematicKey == null ? PlacementManager.INSTANCE.selected() : null;
+        String owner = placement == null ? null : placement.id();
+        if (java.util.Objects.equals(owner, layerOwner)) {
+            return;
+        }
+        layerOwner = owner;
+        int remembered = placement == null ? -1 : placement.rememberedLayer(stampOf(placement));
+        if (remembered < 0) {
+            layerView = LayerView.ALL;
+            layer = 0;
+        } else {
+            layerView = LayerView.SINGLE;
+            layer = Math.min(remembered, maxLayer());
+        }
+    }
+
+    private void storeLayer() {
+        Placement placement = pendingSchematicKey == null ? PlacementManager.INSTANCE.selected() : null;
+        if (placement == null || !placement.id().equals(layerOwner)) {
+            return;
+        }
+        placement.rememberLayer(layerView == LayerView.SINGLE ? layer : -1, stampOf(placement));
+        PlacementManager.INSTANCE.markDirty();
+    }
+
+    private static String stampOf(Placement placement) {
+        SchematicLibrary.Entry entry = SchematicLibrary.INSTANCE.byKey(placement.schematicKey());
+        return entry == null ? "" : entry.stamp();
     }
 
     /**
@@ -197,6 +242,7 @@ public final class ClientState {
             if (delta > 0) {
                 layerView = LayerView.SINGLE;
                 layer = 0;
+                storeLayer();
                 return true;
             }
             return false;
@@ -206,6 +252,7 @@ public final class ClientState {
         if (next < 0) {
             layerView = LayerView.ALL;
             layer = 0;
+            storeLayer();
             return true;
         }
         if (next > top) {
@@ -213,6 +260,7 @@ public final class ClientState {
             return false;
         }
         layer = next;
+        storeLayer();
         return true;
     }
 
@@ -328,12 +376,53 @@ public final class ClientState {
         }
     }
 
+    // ---- build list -------------------------------------------------------
+
+    /**
+     * Whether the build list is following the build you are working on. Kept
+     * the same way as the resource list: on the placement when there is one,
+     * otherwise on a flag that lasts the session.
+     */
+    public boolean buildListVisible() {
+        Placement placement = pendingSchematicKey == null ? PlacementManager.INSTANCE.selected() : null;
+        return placement != null ? placement.buildList() : buildListVisible;
+    }
+
+    /**
+     * Switches the build list on or off for whatever you are working on, and
+     * turns the master switch in the settings back on rather than reporting a
+     * state nothing on screen agrees with.
+     *
+     * @return the state it landed on, so the caller can announce it
+     */
+    public boolean toggleBuildList() {
+        boolean visible = !buildListVisible();
+        setBuildListVisible(visible);
+        if (visible && !SSConfig.INSTANCE.buildListEnabled.get()) {
+            SSConfig.INSTANCE.buildListEnabled.set(true);
+            SSConfig.SPEC.save();
+        }
+        return visible;
+    }
+
+    public void setBuildListVisible(boolean visible) {
+        Placement placement = pendingSchematicKey == null ? PlacementManager.INSTANCE.selected() : null;
+        if (placement != null) {
+            placement.setBuildList(visible);
+            PlacementManager.INSTANCE.markDirty();
+        } else {
+            this.buildListVisible = visible;
+        }
+    }
+
     public void reset() {
         selection.clear();
         pendingSchematicKey = null;
         layerView = LayerView.ALL;
         layer = 0;
+        layerOwner = null;
         renderHolograms = true;
         resourceListVisible = false;
+        buildListVisible = false;
     }
 }

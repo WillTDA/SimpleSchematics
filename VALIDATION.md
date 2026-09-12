@@ -27,6 +27,20 @@ revision, not a verified installable release.
   and the panel stays inside its two thirds of the window whenever there is room
   for more than one row.
 
+## Build list, breathing ghosts and accepted blocks
+
+- Compiled with the real Forge 47.3.0 toolchain, and the language files were
+  checked again for keys used by the source with none missing.
+- **Not verified in game.** Still to check with a client: that the build list
+  narrows to the shown layer and stacks under the resource list when both share
+  a corner; that breathing reaches the ghosts on both the mod's shader and the
+  shader pack path; that ctrl, alt and right click accepts a block, refuses
+  one that already matches, and holds it across a relog; that chest, bed,
+  sign, banner, shulker box, head, decorated pot and conduit ghosts draw with
+  their own textures, facing the right way, on both render paths and in the
+  library preview; and that the layer and selected build come
+  back after a relog, and reset to everything once the schematic file changes.
+
 ## Shader pack compatibility
 
 - Confirmed against the real artefacts that `ShaderPackCompat` asks for a class

@@ -71,6 +71,14 @@ confines the clear to the preview box.
 pulling it toward the camera, so an edge exactly on the block bounds z-fights along
 every shared face. `WorldRenderer.drawBlockOutlines` inflates by 0.0015.
 
+**Vanilla block entity blocks are baked from their model parts** (chests, beds, signs,
+banners, shulker boxes, heads, decorated pots, conduits) into one extra mesh per texture
+per section, drawn after the block mesh with that texture bound in place of the block
+atlas (`BakedSchematic.drawSheets`). Each transform is copied from the vanilla renderer;
+change one only against the source. The hologram shader has no normal lighting, so
+`EntityBlockStandIn.Shaded` bakes the face shade into the vertex colour. A modded block
+entity still gets the particle-textured boxes.
+
 **Never walk the whole schematic volume per frame.** `BlockOutlines` precomputes the
 positions with an exposed face once per schematic and caches them. Invalidate that
 cache anywhere `WorldRenderer`'s baked cache is invalidated.
@@ -90,7 +98,9 @@ chords, so `InputHandler.onKey` matches them on the raw `InputEvent.Key`.
   against Chat. Cosmetic and not fixable short of moving the binding.
 - **Cancelling the use-item event means the vanilla right-click cooldown never gets
   set**, so a held right click re-fires every tick. Anything on right click needs to be
-  idempotent or guarded.
+  idempotent or guarded. `InputHandler.useArmed` is the guard for the modified clicks
+  (shift for a chest bank, ctrl+alt to accept a block): it fires once and re-arms when
+  the use key comes back up.
 
 ## Screens
 
@@ -98,6 +108,10 @@ Every coordinate comes from layout methods computed off the live window. Nothing
 hardcoded, because at GUI scale 6 the whole screen is only a few hundred units across
 and fixed offsets overlap immediately. Rows stack from the top, buttons from the
 bottom, and the list takes what is left.
+
+The resource list and the build list are both drawn by `OverlayPanel`; neither overlay
+has drawing code of its own. The build list is registered after the resource list so
+it can stack past it when they share a corner.
 
 After changing any screen layout, verify it across GUI scales before saying it works.
 A short script that models the layout arithmetic and asserts no overlaps, no
@@ -123,6 +137,16 @@ orphans; a small script over `src/main/java` does this in seconds.
 
 ## Behaviour worth preserving
 
+- **The layer and the selected placement are remembered per world** in `placements.json`.
+  The layer is stamped with the schematic file's size and modified time
+  (`SchematicLibrary.Entry.stamp`); a stamp that no longer matches resets to everything.
+  `ClientState.syncLayer` runs every tick and swaps the layer state in and out as the
+  selection changes.
+- **Accepted blocks live on the placement** as schematic indices and are applied inside
+  the verifier's pass, not layered on afterwards, so the highlight, hidden ghosts,
+  resource list and build list all agree without knowing about them. Changing one does
+  not restart the pass; it is picked up on the next loop rather than rebaking the
+  whole hologram.
 - **Client only.** The mod never sends custom packets and must work on any server. The
   `server` run config exists to prove it never touches server-side paths.
 - **A client cannot see inside a container that is not open.** Chest banks snapshot

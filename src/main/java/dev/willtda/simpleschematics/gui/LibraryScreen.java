@@ -6,6 +6,7 @@ import dev.willtda.simpleschematics.client.Feedback;
 import dev.willtda.simpleschematics.placement.Placement;
 import dev.willtda.simpleschematics.placement.PlacementManager;
 import dev.willtda.simpleschematics.render.WorldRenderer;
+import dev.willtda.simpleschematics.resource.BuildListManager;
 import dev.willtda.simpleschematics.resource.ResourceListManager;
 import dev.willtda.simpleschematics.schematic.Schematic;
 import dev.willtda.simpleschematics.schematic.SchematicLibrary;
@@ -683,6 +684,7 @@ public final class LibraryScreen extends Screen {
         if (SchematicLibrary.INSTANCE.delete(entry)) {
             WorldRenderer.invalidate(entry.key());
             ResourceListManager.INSTANCE.invalidate(entry.key());
+            BuildListManager.INSTANCE.invalidate();
             selectedIndex = -1;
             closePreview();
             rebuildFiltered();

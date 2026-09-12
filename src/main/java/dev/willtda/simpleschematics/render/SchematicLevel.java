@@ -2,6 +2,7 @@ package dev.willtda.simpleschematics.render;
 
 import dev.willtda.simpleschematics.schematic.Schematic;
 import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.ColorResolver;
@@ -67,6 +68,11 @@ public final class SchematicLevel implements BlockAndTintGetter {
     @Override
     public FluidState getFluidState(BlockPos pos) {
         return getBlockState(pos).getFluidState();
+    }
+
+    /** The saved data for the block entity at a local position, or null when there is none. */
+    public CompoundTag blockEntityTag(BlockPos pos) {
+        return schematic.blockEntities().get(pos);
     }
 
     @Override

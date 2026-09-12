@@ -9,6 +9,7 @@ import dev.willtda.simpleschematics.gui.SaveSchematicScreen;
 import dev.willtda.simpleschematics.placement.Placement;
 import dev.willtda.simpleschematics.placement.PlacementManager;
 import dev.willtda.simpleschematics.resource.Banks;
+import dev.willtda.simpleschematics.resource.BuildListManager;
 import dev.willtda.simpleschematics.resource.ResourceListManager;
 import dev.willtda.simpleschematics.render.SchematicVerifier;
 import dev.willtda.simpleschematics.schematic.Schematic;
@@ -20,6 +21,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
@@ -152,6 +154,8 @@ public final class InputHandler {
             openResourceListScreen(mc);
         } else if (chord == Keybinds.RESOURCE_LIST) {
             toggleResourceList();
+        } else if (chord == Keybinds.BUILD_LIST) {
+            toggleBuildList();
         } else if (chord == Keybinds.TOGGLE_RENDERING) {
             Feedback.state(Component.translatable("simpleschematics.feedback.rendering"),
                     STATE.toggleRenderHolograms());
@@ -311,12 +315,32 @@ public final class InputHandler {
             return;
         }
 
-        // Shift and right click on a chest hands it to the build you have
-        // selected, so what is inside counts towards the resource list.
-        if (Screen.hasShiftDown() && toggleBank(mc)) {
+        // Ctrl, alt and right click on a block says it is fine as it is,
+        // whatever the schematic wants there. Checked before the chest bank
+        // click so the two never overlap.
+        if (Screen.hasControlDown() && Screen.hasAltDown()) {
+            if (useArmed) {
+                useArmed = false;
+                toggleAccepted(mc);
+            }
             event.setSwingHand(false);
             event.setCanceled(true);
             return;
+        }
+
+        // Shift and right click on a chest hands it to the build you have
+        // selected, so what is inside counts towards the resource list.
+        if (Screen.hasShiftDown() && mc.level != null) {
+            BlockPos looking = lookedAtBlock();
+            if (looking != null && Banks.isContainer(mc.level, looking)) {
+                if (useArmed) {
+                    useArmed = false;
+                    toggleBank(mc, looking);
+                }
+                event.setSwingHand(false);
+                event.setCanceled(true);
+                return;
+            }
         }
 
         if (STATE.hasPending()) {
@@ -327,19 +351,21 @@ public final class InputHandler {
     }
 
     /**
-     * Marks or unmarks the container you are pointing at as a material bank.
+     * Whether the next modified right click should act.
      *
-     * @return true if this was a container and the click has been dealt with
+     * <p>Cancelling the use event means vanilla never sets its cooldown, so a
+     * held button re-fires every tick. Anything that flips on that click would
+     * flip twenty times a second, so it fires once and then waits for the
+     * button to come back up.</p>
      */
-    private static boolean toggleBank(Minecraft mc) {
-        BlockPos looking = lookedAtBlock();
-        if (looking == null || mc.level == null || !Banks.isContainer(mc.level, looking)) {
-            return false;
-        }
+    private static boolean useArmed = true;
+
+    /** Marks or unmarks the container you are pointing at as a material bank. */
+    private static void toggleBank(Minecraft mc, BlockPos looking) {
         Placement placement = PlacementManager.INSTANCE.selected();
         if (placement == null) {
             Feedback.error(Component.translatable("simpleschematics.feedback.bank_needs_placement"));
-            return true;
+            return;
         }
         BlockPos pos = Banks.canonical(mc.level, looking);
         boolean now = placement.toggleBank(pos);
@@ -350,7 +376,66 @@ public final class InputHandler {
         } else {
             Feedback.info(Component.translatable("simpleschematics.feedback.bank_removed"));
         }
-        return true;
+    }
+
+    /**
+     * Accepts the block you are pointing at as built, or takes that back.
+     *
+     * <p>The selected placement is tried first, then any other visible one
+     * the block falls inside, so you do not have to reselect a build to fix
+     * one block of it. A block that already matches is refused rather than
+     * silently recorded, because accepting it would change nothing you can
+     * see and the click was probably meant for something else.</p>
+     */
+    private static void toggleAccepted(Minecraft mc) {
+        BlockPos world = lookedAtBlock();
+        if (world == null || mc.level == null) {
+            Feedback.error(Component.translatable("simpleschematics.feedback.nothing_there"));
+            return;
+        }
+        List<Placement> candidates = new ArrayList<>();
+        Placement selected = PlacementManager.INSTANCE.selected();
+        if (selected != null) {
+            candidates.add(selected);
+        }
+        for (Placement placement : PlacementManager.INSTANCE.current()) {
+            if (placement != selected && placement.visible()) {
+                candidates.add(placement);
+            }
+        }
+        for (Placement placement : candidates) {
+            SchematicLibrary.Entry entry = SchematicLibrary.INSTANCE.byKey(placement.schematicKey());
+            Schematic schematic = entry == null ? null : entry.get();
+            if (schematic == null) {
+                continue;
+            }
+            BlockPos local = placement.toLocal(schematic, world);
+            if (local == null) {
+                continue;
+            }
+            int index = Placement.indexOf(schematic, local.getX(), local.getY(), local.getZ());
+            if (!placement.isAccepted(index)) {
+                BlockState wanted = schematic.getBlockState(local.getX(), local.getY(), local.getZ())
+                        .mirror(placement.mirror()).rotate(placement.rotation());
+                BlockState actual = mc.level.getBlockState(world);
+                boolean fine = wanted.isAir()
+                        ? actual.isAir() || actual.canBeReplaced()
+                        : SchematicVerifier.matches(wanted, actual);
+                if (fine) {
+                    Feedback.error(Component.translatable("simpleschematics.feedback.override_matches"));
+                    return;
+                }
+            }
+            boolean now = placement.toggleAccepted(index);
+            PlacementManager.INSTANCE.markDirty();
+            Feedback.value(Component.translatable("simpleschematics.feedback.override"),
+                    Component.translatable(now
+                                    ? "simpleschematics.feedback.override_on"
+                                    : "simpleschematics.feedback.override_off")
+                            .withStyle(now ? ChatFormatting.GREEN : ChatFormatting.RED));
+            return;
+        }
+        Feedback.error(Component.translatable("simpleschematics.feedback.override_needs_block"));
     }
 
     /**
@@ -471,6 +556,7 @@ public final class InputHandler {
         // Carry the corner list across from the schematic you were holding, so
         // turning it on before you put the build down is not thrown away.
         placement.setResourceList(STATE.resourceListVisible());
+        placement.setBuildList(STATE.buildListVisible());
         PlacementManager.INSTANCE.add(placement);
         PlacementManager.INSTANCE.saveIfDirty();
         STATE.cancelPending();
@@ -546,13 +632,14 @@ public final class InputHandler {
      *
      * <p>The resource list wants the selected placement checked whatever mode
      * you are in and whether or not the highlight is drawing, because what is
-     * already standing comes off what it says you still need. That one skips
-     * the distance test: far away it simply finds nothing loaded and keeps what
-     * the last pass saw.</p>
+     * already standing comes off what it says you still need, and the build
+     * list is nothing but that answer. That one skips the distance test: far
+     * away it simply finds nothing loaded and keeps what the last pass saw.</p>
      */
     private static void tickVerifier(Minecraft mc) {
         boolean highlighting = STATE.mode() == EditMode.BUILD && SchematicVerifier.INSTANCE.isEnabled();
-        Placement followed = SSConfig.INSTANCE.countPlacedBlocks.get() && !STATE.hasPending()
+        boolean following = SSConfig.INSTANCE.countPlacedBlocks.get() || STATE.buildListVisible();
+        Placement followed = following && !STATE.hasPending()
                 ? PlacementManager.INSTANCE.selected()
                 : null;
         if (!highlighting && followed == null) {
@@ -593,6 +680,11 @@ public final class InputHandler {
             return;
         }
 
+        // A modified right click fires once per press, however long it is held.
+        if (!mc.options.keyUse.isDown()) {
+            useArmed = true;
+        }
+
         // Only meaningful for as long as the screen that click opened is up,
         // plus the wait for it to arrive. Clearing on the first screenless tick
         // threw the position away before the chest could open, so the bank had
@@ -617,6 +709,7 @@ public final class InputHandler {
         }
 
         autoSelect(mc);
+        STATE.syncLayer();
         tickVerifier(mc);
 
         // report once the first pass has actually produced something to report
@@ -681,6 +774,7 @@ public final class InputHandler {
 
         PlacementManager.INSTANCE.tick();
         ResourceListManager.INSTANCE.tick();
+        BuildListManager.INSTANCE.tick();
 
         // Written back about once a second, so scrolling through the modes does
         // not rewrite the config file on every notch.
@@ -723,6 +817,15 @@ public final class InputHandler {
         }
         Feedback.state(Component.translatable("simpleschematics.feedback.resource_list"),
                 STATE.toggleResourceList());
+    }
+
+    private static void toggleBuildList() {
+        if (STATE.targetSchematicKey() == null) {
+            Feedback.error(Component.translatable("simpleschematics.feedback.build_list_needs_target"));
+            return;
+        }
+        Feedback.state(Component.translatable("simpleschematics.feedback.build_list"),
+                STATE.toggleBuildList());
     }
 
     /** Bare presses of a chord key mean nothing, so they never reach a tick. */
