@@ -1,6 +1,7 @@
 package dev.willtda.simpleschematics.client;
 
 import dev.willtda.simpleschematics.config.SSConfig;
+import dev.willtda.simpleschematics.printing.PrintManager;
 import dev.willtda.simpleschematics.placement.Placement;
 import dev.willtda.simpleschematics.placement.PlacementManager;
 import dev.willtda.simpleschematics.resource.ResourceListManager;
@@ -28,10 +29,7 @@ public final class ClientState {
         SINGLE
     }
 
-    private boolean enabled;
-    private boolean initialised;
     private EditMode mode = EditMode.SCAN;
-    private boolean modeLoaded;
     private boolean modeDirty;
 
     private final ScanSelection selection = new ScanSelection();
@@ -50,32 +48,27 @@ public final class ClientState {
      */
     private String previewSchematicKey;
 
-    private boolean resourceListVisible;
-    private boolean buildListVisible;
-    private boolean renderHolograms = true;
-
     private ClientState() {
     }
 
     // ---- on and off -------------------------------------------------------
 
     public boolean isEnabled() {
-        if (!initialised) {
-            initialised = true;
-            enabled = SSConfig.INSTANCE.enabledOnLaunch.get();
-        }
-        return enabled;
+        return SSConfig.INSTANCE.enabledOnLaunch.get();
     }
 
     public void setEnabled(boolean value) {
-        initialised = true;
-        this.enabled = value;
+        SSConfig.INSTANCE.enabledOnLaunch.set(value);
+        SSConfig.SPEC.save();
+        if (!value) {
+            PrintManager.INSTANCE.pause();
+        }
     }
 
     /** @return the state it landed on, so the caller can announce it */
     public boolean toggleEnabled() {
         setEnabled(!isEnabled());
-        return enabled;
+        return isEnabled();
     }
 
     /**
@@ -102,12 +95,13 @@ public final class ClientState {
     // ---- hologram rendering ----------------------------------------------
 
     public boolean renderHolograms() {
-        return renderHolograms;
+        return SSConfig.INSTANCE.renderHolograms.get();
     }
 
     public boolean toggleRenderHolograms() {
-        renderHolograms = !renderHolograms;
-        return renderHolograms;
+        SSConfig.INSTANCE.renderHolograms.set(!renderHolograms());
+        SSConfig.SPEC.save();
+        return renderHolograms();
     }
 
     public boolean isHoldingTool() {
@@ -128,13 +122,11 @@ public final class ClientState {
     // ---- mode -------------------------------------------------------------
 
     /**
-     * The mode is read back from the config the first time it is asked for,
-     * which is after the config has actually loaded. Reading it in the field
-     * initialiser would be too early and would always give Scan.
+     * Read the saved choice once config has loaded. A pending scroll change
+     * wins until it has been flushed, including across a config file reload.
      */
     public EditMode mode() {
-        if (!modeLoaded) {
-            modeLoaded = true;
+        if (!modeDirty) {
             mode = EditMode.byName(SSConfig.INSTANCE.lastMode.get());
         }
         return mode;
@@ -142,7 +134,11 @@ public final class ClientState {
 
     public void setMode(EditMode mode) {
         if (mode() != mode) {
+            if (mode != EditMode.PRINT) {
+                PrintManager.INSTANCE.pause();
+            }
             this.mode = mode;
+            SSConfig.INSTANCE.lastMode.set(mode.name());
             modeDirty = true;
             Feedback.value(net.minecraft.network.chat.Component.translatable("simpleschematics.feedback.mode"),
                     mode.label());
@@ -324,9 +320,9 @@ public final class ClientState {
         return placement;
     }
 
-    /** Whether the corner lists have any business being on screen: the mod on, in Build. */
+    /** Whether the corner lists have any business being on screen: building or printing. */
     public boolean overlaysActive() {
-        return isEnabled() && mode() == EditMode.BUILD;
+        return isEnabled() && mode() != EditMode.SCAN;
     }
 
     /**
@@ -382,11 +378,11 @@ public final class ClientState {
      * <p>For a placement the answer lives on the placement itself and is written
      * out with it, so a build you are part way through still has its list the
      * next time you log in. A schematic you are only holding has nowhere to keep
-     * that, so it falls back to a flag that lasts as long as the session.</p>
+     * that, so it falls back to a saved preference for new placements.</p>
      */
     public boolean resourceListVisible() {
         Placement placement = pendingSchematicKey == null ? PlacementManager.INSTANCE.selected() : null;
-        return placement != null ? placement.resourceList() : resourceListVisible;
+        return placement != null ? placement.resourceList() : SSConfig.INSTANCE.resourceListVisible.get();
     }
 
     /**
@@ -418,7 +414,8 @@ public final class ClientState {
             placement.setResourceList(visible);
             PlacementManager.INSTANCE.markDirty();
         } else {
-            this.resourceListVisible = visible;
+            SSConfig.INSTANCE.resourceListVisible.set(visible);
+            SSConfig.SPEC.save();
         }
     }
 
@@ -427,11 +424,11 @@ public final class ClientState {
     /**
      * Whether the build list is following the build you are working on. Kept
      * the same way as the resource list: on the placement when there is one,
-     * otherwise on a flag that lasts the session.
+     * otherwise in the saved preference for new placements.
      */
     public boolean buildListVisible() {
         Placement placement = pendingSchematicKey == null ? PlacementManager.INSTANCE.selected() : null;
-        return placement != null ? placement.buildList() : buildListVisible;
+        return placement != null ? placement.buildList() : SSConfig.INSTANCE.buildListVisible.get();
     }
 
     /**
@@ -457,7 +454,8 @@ public final class ClientState {
             placement.setBuildList(visible);
             PlacementManager.INSTANCE.markDirty();
         } else {
-            this.buildListVisible = visible;
+            SSConfig.INSTANCE.buildListVisible.set(visible);
+            SSConfig.SPEC.save();
         }
     }
 
@@ -468,8 +466,5 @@ public final class ClientState {
         layerView = LayerView.ALL;
         layer = 0;
         layerOwner = null;
-        renderHolograms = true;
-        resourceListVisible = false;
-        buildListVisible = false;
     }
 }

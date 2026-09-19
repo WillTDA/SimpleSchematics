@@ -40,6 +40,8 @@ public final class Placement {
     private int layer = -1;
     /** The schematic file the layer was remembered against, so a changed file resets it. */
     private String layerStamp = "";
+    /** The exact file and transform last printed, used only for the resume prompt. */
+    private String printStamp = "";
     /**
      * Chests you have marked as holding materials for this build, and the last
      * contents seen in each. The counts are needed because a client only ever
@@ -67,6 +69,14 @@ public final class Placement {
     /** Stable across relogs, so per placement state such as the diff can be keyed on it. */
     public String id() {
         return id;
+    }
+
+    public boolean hasPrintProgress(String stamp) {
+        return printStamp.equals(stamp);
+    }
+
+    public void markPrintStarted(String stamp) {
+        printStamp = stamp;
     }
 
     public String schematicKey() {
@@ -402,6 +412,7 @@ public final class Placement {
         json.addProperty("visible", visible);
         json.addProperty("resourceList", resourceList);
         json.addProperty("buildList", buildList);
+        if (!printStamp.isEmpty()) json.addProperty("printStamp", printStamp);
         if (layer >= 0) {
             json.addProperty("layer", layer);
             json.addProperty("layerStamp", layerStamp);
@@ -447,6 +458,7 @@ public final class Placement {
         placement.visible = !json.has("visible") || json.get("visible").getAsBoolean();
         placement.resourceList = json.has("resourceList") && json.get("resourceList").getAsBoolean();
         placement.buildList = json.has("buildList") && json.get("buildList").getAsBoolean();
+        placement.printStamp = json.has("printStamp") ? json.get("printStamp").getAsString() : "";
         if (json.has("layer") && json.has("layerStamp")) {
             placement.layer = json.get("layer").getAsInt();
             placement.layerStamp = json.get("layerStamp").getAsString();

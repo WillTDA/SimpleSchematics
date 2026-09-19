@@ -45,6 +45,7 @@ public final class SSConfig {
     public final ForgeConfigSpec.BooleanValue saveContainerContentsByDefault;
 
     // ---- build / hologram -------------------------------------------------
+    public final ForgeConfigSpec.BooleanValue renderHolograms;
     public final ForgeConfigSpec.DoubleValue hologramOpacity;
     public final ForgeConfigSpec.BooleanValue hologramOutline;
     public final ForgeConfigSpec.BooleanValue hologramBlockOutline;
@@ -73,7 +74,23 @@ public final class SSConfig {
     public final ForgeConfigSpec.EnumValue<dev.willtda.simpleschematics.render.ShaderPackCompat.Mode> shaderPackCompat;
     public final ForgeConfigSpec.BooleanValue autoSelectLookedAt;
 
+    // ---- print ------------------------------------------------------------
+    public final ForgeConfigSpec.EnumValue<PrintSource> printSource;
+    public final ForgeConfigSpec.IntValue printDelay;
+    public final ForgeConfigSpec.BooleanValue printSounds;
+    public final ForgeConfigSpec.BooleanValue printParticles;
+    public final ForgeConfigSpec.BooleanValue printWarnSurvival;
+    public final ForgeConfigSpec.BooleanValue printWarnMissing;
+    public final ForgeConfigSpec.BooleanValue printReplaceBlocks;
+    public final ForgeConfigSpec.BooleanValue printEntities;
+    public final ForgeConfigSpec.BooleanValue printContents;
+
+    public enum PrintSource {
+        INVENTORY, LINKED_CHESTS, BOTH
+    }
+
     // ---- resource list ----------------------------------------------------
+    public final ForgeConfigSpec.BooleanValue resourceListVisible;
     public final ForgeConfigSpec.BooleanValue resourceListEnabled;
     public final ForgeConfigSpec.EnumValue<Anchor> resourceListAnchor;
     public final ForgeConfigSpec.IntValue resourceListOffsetX;
@@ -91,6 +108,7 @@ public final class SSConfig {
     public final ForgeConfigSpec.BooleanValue showBuildName;
 
     // ---- build list -------------------------------------------------------
+    public final ForgeConfigSpec.BooleanValue buildListVisible;
     public final ForgeConfigSpec.BooleanValue buildListEnabled;
     public final ForgeConfigSpec.EnumValue<Anchor> buildListAnchor;
     public final ForgeConfigSpec.IntValue buildListOffsetX;
@@ -146,6 +164,8 @@ public final class SSConfig {
         b.pop();
 
         b.comment("Build mode and holograms").push("build");
+        renderHolograms = b.comment("Show holograms. Remembered by the menu toggle and the hologram shortcut")
+                .define("renderHolograms", true);
         hologramOpacity = b.comment("How solid the hologram looks")
                 .defineInRange("hologramOpacity", 0.65D, 0.0D, 1.0D);
         hologramOutline = b.comment("Draw a box around the hologram")
@@ -208,7 +228,30 @@ public final class SSConfig {
                 .defineEnum("shaderPackCompat", dev.willtda.simpleschematics.render.ShaderPackCompat.Mode.AUTO);
         b.pop();
 
+        b.comment("Print mode").push("print");
+        printSource = b.comment("Where Survival printing takes materials from. Linked chests must be accessible and in reach")
+                .defineEnum("printSource", PrintSource.BOTH);
+        printDelay = b.comment("Ticks between Survival block placements. Twenty ticks is one second")
+                .defineInRange("printDelay", 4, 1, 40);
+        printSounds = b.comment("Play each block's placement sound while printing")
+                .define("printSounds", true);
+        printParticles = b.comment("Show a small burst of particles at each printed block")
+                .define("printParticles", true);
+        printWarnSurvival = b.comment("Ask before Survival printing and remind you to check the server's automation rules")
+                .define("printWarnSurvival", true);
+        printWarnMissing = b.comment("Ask before starting a print without all the required materials")
+                .define("printWarnMissing", true);
+        printReplaceBlocks = b.comment("Allow an operator to replace blocks in the way. Other players must clear them by hand")
+                .define("printReplaceBlocks", false);
+        printEntities = b.comment("Include saved entities when printing in Creative. Survival never prints entities")
+                .define("printEntities", true);
+        printContents = b.comment("Include saved container contents when printing in Creative. Survival never prints contents")
+                .define("printContents", true);
+        b.pop();
+
         b.comment("Resource list").push("resource_list");
+        resourceListVisible = b.comment("Show the resource list for schematics being positioned. Existing placements remember their own choice")
+                .define("resourceListVisible", false);
         resourceListEnabled = b.comment("Show the resource list overlay when a schematic is targeted")
                 .define("resourceListEnabled", true);
         resourceListAnchor = b.comment("Which corner the list sits in")
@@ -246,6 +289,8 @@ public final class SSConfig {
         b.comment("Build list", "The panel that says what is still to place for the layer you are looking at.",
                         "Size, width, panel darkness and the stack breakdown are shared with the resource list")
                 .push("build_list");
+        buildListVisible = b.comment("Show the build list for schematics being positioned. Existing placements remember their own choice")
+                .define("buildListVisible", false);
         buildListEnabled = b.comment("Show the build list overlay when it is switched on for a build")
                 .define("buildListEnabled", true);
         buildListAnchor = b.comment("Which corner the list sits in. Sharing a corner with the resource list stacks the two")

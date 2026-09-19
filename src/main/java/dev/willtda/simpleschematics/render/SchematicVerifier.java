@@ -80,13 +80,12 @@ public final class SchematicVerifier {
             new Diff(List.of(), List.of(), 0, 0, 0, 0, 0, false, Map.of(), Map.of());
 
     private final Map<String, State> states = new HashMap<>();
-    private boolean enabled = true;
 
     private SchematicVerifier() {
     }
 
     public boolean isEnabled() {
-        return enabled && SSConfig.INSTANCE.highlightMismatches.get();
+        return SSConfig.INSTANCE.highlightMismatches.get();
     }
 
     /**
@@ -95,22 +94,18 @@ public final class SchematicVerifier {
      * wants any more is dropped on the next tick.
      */
     public void setEnabled(boolean value) {
-        this.enabled = value;
+        SSConfig.INSTANCE.highlightMismatches.set(value);
+        SSConfig.SPEC.save();
     }
 
     /**
-     * The master switch in the settings would otherwise let this report itself
-     * on while nothing appeared, so asking for the highlight here turns that
-     * switch back on rather than lying about the result.
+     * The shortcut and both settings rows share the same saved value, so one
+     * click always changes the state that is actually being rendered.
      *
      * @return whether the highlight is actually going to draw
      */
     public boolean toggle() {
-        if (!enabled && !SSConfig.INSTANCE.highlightMismatches.get()) {
-            SSConfig.INSTANCE.highlightMismatches.set(true);
-            SSConfig.SPEC.save();
-        }
-        setEnabled(!enabled);
+        setEnabled(!isEnabled());
         return isEnabled();
     }
 

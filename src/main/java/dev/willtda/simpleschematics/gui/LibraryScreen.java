@@ -5,6 +5,7 @@ import dev.willtda.simpleschematics.client.EditMode;
 import dev.willtda.simpleschematics.client.Feedback;
 import dev.willtda.simpleschematics.placement.Placement;
 import dev.willtda.simpleschematics.placement.PlacementManager;
+import dev.willtda.simpleschematics.printing.PrintManager;
 import dev.willtda.simpleschematics.render.WorldRenderer;
 import dev.willtda.simpleschematics.resource.BuildListManager;
 import dev.willtda.simpleschematics.resource.ResourceListManager;
@@ -18,6 +19,7 @@ import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
+import net.minecraft.world.level.GameType;
 import net.minecraft.Util;
 
 import java.util.ArrayList;
@@ -62,6 +64,7 @@ public final class LibraryScreen extends Screen {
     private boolean draggingPreview;
 
     private Button placeButton;
+    private Button printButton;
     private Button convertButton;
     private Button deleteButton;
     private Button resourceButton;
@@ -124,8 +127,8 @@ public final class LibraryScreen extends Screen {
      */
     private int footerRows() {
         if (tab == Tab.PLACEMENTS) {
-            // Only Delete is on show, so it shares the bottom row with the rest.
-            return 1;
+            // Print and Delete share a row, above navigation in the compact view.
+            return compact() ? 2 : 1;
         }
         return compact() ? 3 : 2;
     }
@@ -211,6 +214,9 @@ public final class LibraryScreen extends Screen {
         // just above it, so starting here is what keeps the two from meeting.
         int actionRow = footerTop();
 
+        printButton = addRenderableWidget(Button.builder(Component.translatable("simpleschematics.gui.print"),
+                        b -> printSelected())
+                .bounds(actionX, actionRow, actionWidth, BUTTON_HEIGHT).build());
         convertButton = addRenderableWidget(Button.builder(Component.translatable("simpleschematics.gui.convert"),
                         b -> convertSelected())
                 .bounds(actionX, actionRow, actionWidth, BUTTON_HEIGHT).build());
@@ -242,7 +248,21 @@ public final class LibraryScreen extends Screen {
      */
     private void updateActionButtons() {
         if (tab == Tab.PLACEMENTS) {
-            boolean any = PlacementManager.INSTANCE.selected() != null;
+            Placement selected = PlacementManager.INSTANCE.selected();
+            boolean any = selected != null;
+            SchematicLibrary.Entry entry = any ? SchematicLibrary.INSTANCE.byKey(selected.schematicKey()) : null;
+            boolean loaded = entry != null && entry.get() != null;
+            boolean enabled = ClientState.INSTANCE.isEnabled();
+            boolean canBuild = this.minecraft.player != null && this.minecraft.gameMode != null
+                    && (this.minecraft.gameMode.getPlayerMode() == GameType.CREATIVE
+                    || this.minecraft.gameMode.getPlayerMode() == GameType.SURVIVAL);
+            printButton.active = any && loaded && enabled && canBuild;
+            printButton.setTooltip(Tooltip.create(Component.translatable(
+                    !any ? "simpleschematics.tip.print.none"
+                            : !loaded ? "simpleschematics.tip.print.broken"
+                            : !enabled ? "simpleschematics.tip.live.off"
+                            : !canBuild ? "simpleschematics.tip.print.mode"
+                            : "simpleschematics.tip.print.start")));
             deleteButton.active = any;
             deleteButton.setTooltip(Tooltip.create(Component.translatable(any
                     ? "simpleschematics.tip.delete.placement"
@@ -285,6 +305,7 @@ public final class LibraryScreen extends Screen {
         boolean library = next == Tab.LIBRARY;
         search.setVisible(library);
         placeButton.visible = library;
+        printButton.visible = !library;
         convertButton.visible = library;
         resourceButton.visible = library;
         if (changed) {
@@ -651,6 +672,17 @@ public final class LibraryScreen extends Screen {
         ClientState.INSTANCE.setPendingSchematicKey(entry.key());
         onClose();
         Feedback.info(Component.translatable("simpleschematics.feedback.point_and_place"));
+    }
+
+    private void printSelected() {
+        if (PlacementManager.INSTANCE.selected() == null || !ClientState.INSTANCE.isEnabled()) {
+            return;
+        }
+        ClientState.INSTANCE.cancelPending();
+        ClientState.INSTANCE.setMode(EditMode.PRINT);
+        closePreview();
+        this.minecraft.setScreen(null);
+        PrintManager.INSTANCE.requestPrint();
     }
 
     private void convertSelected() {

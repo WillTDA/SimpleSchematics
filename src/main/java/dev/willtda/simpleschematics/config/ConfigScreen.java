@@ -102,10 +102,7 @@ public final class ConfigScreen extends Screen {
         // Switching the mod off greys out everything below it, so the rows are
         // rebuilt rather than left explaining themselves out of date.
         liveToggle("simpleschematics.config.modEnabled", x, fieldWidth,
-                live::isEnabled, () -> {
-                    live.toggleEnabled();
-                    rebuildWidgets();
-                },
+                live::isEnabled, live::toggleEnabled,
                 "simpleschematics.tip.live.mod", null, null);
         modeRow("simpleschematics.config.mode", x, fieldWidth);
         liveToggle("simpleschematics.config.renderHolograms", x, fieldWidth,
@@ -193,6 +190,25 @@ public final class ConfigScreen extends Screen {
                         ? "simpleschematics.tip.shader_pack"
                         : "simpleschematics.tip.shader_pack.none");
 
+        heading("simpleschematics.config.section.print");
+        choice("simpleschematics.config.printSource", x, fieldWidth, c.printSource, SSConfig.PrintSource.values(),
+                "simpleschematics.tip.print.source");
+        intSlider("simpleschematics.config.printDelay", x, fieldWidth, c.printDelay, 1, 40,
+                "simpleschematics.tip.print.delay");
+        toggle("simpleschematics.config.printSounds", x, fieldWidth, c.printSounds,
+                "simpleschematics.tip.print.sounds");
+        toggle("simpleschematics.config.printParticles", x, fieldWidth, c.printParticles);
+        toggle("simpleschematics.config.printWarnSurvival", x, fieldWidth, c.printWarnSurvival,
+                "simpleschematics.tip.print.survival");
+        toggle("simpleschematics.config.printWarnMissing", x, fieldWidth, c.printWarnMissing,
+                "simpleschematics.tip.print.missing");
+        toggle("simpleschematics.config.printReplaceBlocks", x, fieldWidth, c.printReplaceBlocks,
+                "simpleschematics.tip.print.replace");
+        toggle("simpleschematics.config.printEntities", x, fieldWidth, c.printEntities,
+                "simpleschematics.tip.print.entities");
+        toggle("simpleschematics.config.printContents", x, fieldWidth, c.printContents,
+                "simpleschematics.tip.print.contents");
+
         heading("simpleschematics.config.section.highlight");
         toggle("simpleschematics.config.highlightMismatches", x, fieldWidth, c.highlightMismatches);
         toggle("simpleschematics.config.highlightExtraBlocks", x, fieldWidth, c.highlightExtraBlocks);
@@ -276,6 +292,7 @@ public final class ConfigScreen extends Screen {
             value.set(!value.get());
             SSConfig.SPEC.save();
             b.setMessage(state(value.get()));
+            rebuildWidgets();
         }).bounds(x, 0, width, 20).build();
         if (tipKey != null) {
             button.setTooltip(Tooltip.create(Component.translatable(tipKey)));
@@ -284,7 +301,7 @@ public final class ConfigScreen extends Screen {
     }
 
     /**
-     * A toggle over live session state rather than a stored setting. These are
+     * A toggle over the state used by the world and the saved preference. These are
      * the things that otherwise only answer to a chord, so the label is read
      * back from the state after every click, and a row that the state cannot
      * take right now greys out and says what it is waiting for.
@@ -294,6 +311,7 @@ public final class ConfigScreen extends Screen {
         Button button = Button.builder(state(get.getAsBoolean()), b -> {
             flip.run();
             b.setMessage(state(get.getAsBoolean()));
+            rebuildWidgets();
         }).bounds(x, 0, width, 20).build();
         boolean ready = usable == null || usable.getAsBoolean();
         button.setTooltip(Tooltip.create(Component.translatable(ready ? tipKey : blockedKey)));
@@ -305,6 +323,7 @@ public final class ConfigScreen extends Screen {
         ClientState live = ClientState.INSTANCE;
         Button button = Button.builder(live.mode().plainLabel(), b -> {
             live.cycleMode();
+            live.flushMode();
             b.setMessage(live.mode().plainLabel());
         }).bounds(x, 0, width, 20).build();
         button.setTooltip(Tooltip.create(Component.translatable(live.isEnabled()
@@ -345,6 +364,11 @@ public final class ConfigScreen extends Screen {
     }
 
     private void intSlider(String key, int x, int width, ForgeConfigSpec.IntValue cfg, int min, int max) {
+        intSlider(key, x, width, cfg, min, max, null);
+    }
+
+    private void intSlider(String key, int x, int width, ForgeConfigSpec.IntValue cfg,
+                           int min, int max, String tipKey) {
         AbstractSliderButton slider = new AbstractSliderButton(x, 0, width, 20,
                 Component.literal(String.valueOf(cfg.get())),
                 ((double) cfg.get() - min) / (double) (max - min)) {
@@ -359,6 +383,9 @@ public final class ConfigScreen extends Screen {
                 SSConfig.SPEC.save();
             }
         };
+        if (tipKey != null) {
+            slider.setTooltip(Tooltip.create(Component.translatable(tipKey)));
+        }
         rows.add(new Row(key, addWidget(slider), false, null));
     }
 
@@ -519,8 +546,15 @@ public final class ConfigScreen extends Screen {
 
     @Override
     public void onClose() {
-        SSConfig.SPEC.save();
         WorldRenderer.invalidateAll();
         this.minecraft.setScreen(parent);
+    }
+
+    @Override
+    public void removed() {
+        ClientState.INSTANCE.flushMode();
+        SSConfig.SPEC.save();
+        dev.willtda.simpleschematics.placement.PlacementManager.INSTANCE.saveIfDirty();
+        super.removed();
     }
 }

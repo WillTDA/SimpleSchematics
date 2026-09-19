@@ -3,11 +3,12 @@ package dev.willtda.simpleschematics.client;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 
-/** The two things you can be doing. Ctrl and scroll swaps between them. */
+/** The available tools. Ctrl and scroll moves between them. */
 public enum EditMode {
 
     SCAN("simpleschematics.mode.scan", ChatFormatting.AQUA),
-    BUILD("simpleschematics.mode.build", ChatFormatting.GREEN);
+    BUILD("simpleschematics.mode.build", ChatFormatting.GREEN),
+    PRINT("simpleschematics.mode.print", ChatFormatting.GOLD);
 
     private final String key;
     private final ChatFormatting colour;
@@ -40,10 +41,10 @@ public enum EditMode {
     }
 
     public EditMode next() {
-        return this == SCAN ? BUILD : SCAN;
+        return values()[(ordinal() + 1) % values().length];
     }
 
     public EditMode previous() {
-        return next();
+        return values()[(ordinal() + values().length - 1) % values().length];
     }
 }

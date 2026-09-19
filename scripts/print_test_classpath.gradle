@@ -1,0 +1,12 @@
+// Optional test helper. Generates the development runtime classpath without starting a client.
+gradle.projectsEvaluated {
+    def project = gradle.rootProject
+    project.tasks.register('writePrintTestClasspath') {
+        dependsOn project.tasks.named('classes')
+        doLast {
+            def target = project.layout.buildDirectory.file('verification/print/runtime-classpath.txt').get().asFile
+            target.parentFile.mkdirs()
+            target.setText(project.sourceSets.main.runtimeClasspath.files.collect { it.absolutePath }.join('\n'), 'UTF-8')
+        }
+    }
+}

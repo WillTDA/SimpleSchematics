@@ -4,6 +4,7 @@ import dev.willtda.simpleschematics.SimpleSchematics;
 import dev.willtda.simpleschematics.config.ConfigScreen;
 import dev.willtda.simpleschematics.gui.SchematicPreview;
 import dev.willtda.simpleschematics.placement.PlacementManager;
+import dev.willtda.simpleschematics.printing.PrintManager;
 import dev.willtda.simpleschematics.render.WorldRenderer;
 import dev.willtda.simpleschematics.render.HologramShader;
 import dev.willtda.simpleschematics.render.SchematicVerifier;
@@ -77,6 +78,7 @@ public final class SimpleSchematicsClient {
 
     @SubscribeEvent
     public static void onJoin(ClientPlayerNetworkEvent.LoggingIn event) {
+        PrintManager.INSTANCE.reset();
         SchematicLibrary.INSTANCE.refresh();
         PlacementManager.INSTANCE.onJoinWorld();
         ResourceListManager.INSTANCE.invalidateAll();
@@ -88,6 +90,7 @@ public final class SimpleSchematicsClient {
 
     @SubscribeEvent
     public static void onLeave(ClientPlayerNetworkEvent.LoggingOut event) {
+        PrintManager.INSTANCE.reset();
         ClientState.INSTANCE.flushMode();
         PlacementManager.INSTANCE.onLeaveWorld();
         WorldRenderer.invalidateAll();
@@ -98,6 +101,7 @@ public final class SimpleSchematicsClient {
 
     @SubscribeEvent
     public static void onRespawn(ClientPlayerNetworkEvent.Clone event) {
+        PrintManager.INSTANCE.reset();
         // dimension changes rebuild the level, so the baked geometry has to go
         WorldRenderer.invalidateAll();
         SchematicVerifier.INSTANCE.clear();

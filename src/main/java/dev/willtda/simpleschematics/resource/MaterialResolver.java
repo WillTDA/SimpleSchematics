@@ -8,11 +8,13 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.CakeBlock;
 import net.minecraft.world.level.block.CandleCakeBlock;
+import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.level.block.FlowerPotBlock;
 import net.minecraft.world.level.block.SlabBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BedPart;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.block.state.properties.ChestType;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.level.block.state.properties.IntegerProperty;
 import net.minecraft.world.level.block.state.properties.SlabType;
@@ -200,6 +202,19 @@ public final class MaterialResolver {
         }
         if (block != actual.getBlock()) {
             return Cost.NOTHING;
+        }
+        // A single slab has already paid for half of a double slab. Its water
+        // disappears when the second slab fills the space.
+        if (block instanceof SlabBlock && wanted.getValue(SlabBlock.TYPE) == SlabType.DOUBLE
+                && actual.getValue(SlabBlock.TYPE) != SlabType.DOUBLE) {
+            return Cost.of(resolveItem(block), 1);
+        }
+        // A chest cannot acquire its left/right half until its partner exists.
+        if (block instanceof ChestBlock && wanted.getValue(ChestBlock.TYPE) != ChestType.SINGLE
+                && actual.getValue(ChestBlock.TYPE) == ChestType.SINGLE
+                && wanted.getValue(ChestBlock.FACING) == actual.getValue(ChestBlock.FACING)
+                && wanted.getValue(ChestBlock.WATERLOGGED).equals(actual.getValue(ChestBlock.WATERLOGGED))) {
+            return Cost.of(resolveItem(block), 1);
         }
         // The countable blocks: the same block with fewer of the item in it.
         for (IntegerProperty count : COUNTS) {

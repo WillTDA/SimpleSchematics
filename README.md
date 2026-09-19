@@ -22,6 +22,8 @@ The jar lands in `build/libs/`. Drop it in your `mods` folder.
 
 For a development client, run `./gradlew runClient`. On Windows, use `gradlew.bat build` or `gradlew.bat runClient`.
 
+To run the regression checks on Windows, generate the current runtime classpath with `gradlew.bat --offline --init-script scripts/print_test_classpath.gradle writePrintTestClasspath`, then run `scripts/check_print_placement.ps1` under Java 17 and `python scripts/check_print_ui.py`. These headless checks cover block states, material accounting, NBT, transforms, settings persistence and layout; gameplay and networking require an in-game check.
+
 ## How you use it
 
 Hold the activation item (a stick by default, changeable in the config) and the controls wake up.
@@ -43,7 +45,9 @@ Hold the activation item (a stick by default, changeable in the config) and the 
 
 None of the second column does anything on its own, so the mod costs you exactly one key. All of it is rebindable in the vanilla Controls screen.
 
-**Ctrl and scroll** swaps between the two modes. Whichever one you were last in is where you come back the next time you log in. **Ctrl, Shift and scroll** switches the mod on or off, and unlike everything else that one works while the mod is off, so long as the activation item is in your hand.
+The mod switch, hologram visibility, mismatch highlighting and mode are saved preferences shared by the config menu and shortcuts. Leaving or joining a world does not reset them. Resource and build list visibility is remembered per placement, with separate saved defaults while positioning a new schematic.
+
+**Ctrl and scroll** swaps between Scan, Build and Print mode. Whichever one you were last in is where you come back the next time you log in. **Ctrl, Shift and scroll** switches the mod on or off, and unlike everything else that one works while the mod is off, so long as the activation item is in your hand.
 
 ### Scan mode
 
@@ -59,6 +63,23 @@ None of the second column does anything on its own, so the mod costs you exactly
 - Choose one, then point where you want it and press your normal **use block** key. Whatever you have that bound to is what works.
 - **.** rotates and **,** mirrors the selected placement.
 - **Shift and scroll**, or **Page Up** and **Page Down**, walks the selected build up one layer at a time, with a note block hi-hat that rises in pitch as you climb. It stops at the top, and scrolling back down past the bottom returns the whole build, so there is no separate layer mode to switch on. Only the build you have selected is sliced; every other one in the world stays whole. The layer is remembered with the build, along with which build you had selected, so a relog puts you back where you were. If the schematic file changed while you were away the layer means nothing any more and the build comes back whole.
+
+### Print mode
+
+Place a schematic in Build mode, switch to **Print** with **Ctrl and scroll**, and press **Enter** or right click with the activation item. The placements screen also has a **Print** button. Print checks the entire build before starting. **\** pauses it; opening another screen, changing placement or mode, dying or leaving the world also stops it. Starting again checks the actual world and asks whether to continue a partial build. It never silently resumes after a relog.
+
+- **Creative:** operators get a fast paste, batching runs of identical blocks into vanilla commands. Larger builds are spread across ticks to keep the server responsive. Saved entities and container contents can be restored, with independent settings for each. Without operator permission, Print uses ordinary reachable item placement and explains that saved entities and block data cannot be restored.
+- **Survival:** blocks appear in a steady sequence with their own placement sounds and a short rising sparkle. Print draws from **Inventory**, **Linked Chests**, or **Both**; Both uses carried items first. It opens reachable linked storage and transfers stacks through the normal inventory menu. Spare items stay in your inventory. Chest-only printing protects supplies you already owned and remembers withdrawals when you pause and continue in the same game session. After restarting the game, choose Both to use carried leftovers.
+- **Server rules:** Survival shows a warning that automated building is bannable on most servers and asks you to double-check the rules before proceeding. Print does not bypass server permissions or protection plugins.
+- **Missing materials:** the confirmation explains that Yes builds as much as possible. Cached chest totals are estimates; the printer rechecks the real menu and never creates resources from those estimates. Nearby visible chests, barrels, shulker boxes, hoppers and dispensers are supported. Locked, distant or inaccessible containers cannot supply a build.
+- **Obstructions:** non-operators must clear conflicting blocks themselves. Operator replacement is off by default and requires a separate confirmation when enabled. Linked material banks are protected from replacement. Existing correct blocks and accepted differences are left alone, and air in the schematic does not clear the landscape.
+- **Placement rules:** supports, attachment faces, orientation, gravity, cactus neighbours, doors, beds, double chests and stackable blocks are checked before placing. Survival printing respects reach and line of sight; walk around the build to expose the next section. If nothing can progress for a while, Print stops with the remaining block count, ready to continue.
+
+Some states require manual work: fluid placement, adding water to an already dry block, tilling, growing crops, powered or otherwise non-placeable states, and unsupported modded interactions. Survival never restores captured entities, container inventories or block-entity data, and will not unpack items carrying block-entity data. The mismatch highlight and build list show what still needs attention. Print always checks the whole placement; the layer view only changes the hologram and lists.
+
+**Settings → Print** controls material sources, pace, sounds, particles, the Survival and missing-resource warnings, operator replacement, entities and container contents. The defaults enable warnings, use both material sources and keep replacement off.
+
+Creative data transfer restores long text and full inventories through a temporary Creative item and checks the server's response. Payloads over 1 MiB, executable captured data and unsupported riding relationships are omitted and reported. Entity attempts are remembered in `print-entities/` so continuing a build cannot repeatedly summon the same captured entity. A server refusal stops the paste; correct blocks are rechecked on the next run.
 
 ### Checking your work
 
@@ -100,7 +121,7 @@ With a shader pack loaded through Oculus or Iris the mod's own shader is ignored
 
 ### Resource list
 
-- **M** and **O** shows or hides the overlay for whichever build you are working on. That choice is remembered per placement and written out with it, so a half finished build still has its list waiting the next time you log in. Both corner lists belong to Build mode; switch to Scan and they step aside until you come back.
+- **M** and **O** shows or hides the overlay for whichever build you are working on. That choice is remembered per placement and written out with it, so a half finished build still has its list waiting the next time you log in. Both corner lists belong to Build and Print modes; switch to Scan and they step aside until you come back.
 - It sits in the bottom right by default at half size, refreshes five times a second, and drops rows the moment you have gathered them. The build it is following is named above it; **Show the Build's Name** in the settings turns that off.
 - Sorted with the biggest shortfall first, shown as `1,234` with `19 × 64 + 18` beside it. A single stack reads `64 + 18`.
 - Items disappear from the list as you collect them. That includes your inventory, offhand, the stack on your cursor, your ender chest, and any chest you currently have open.
@@ -127,29 +148,10 @@ simpleschematics/
   schematics/       your .sschem files, and any .litematic you drop in
   placements.json   where each schematic sits, per world and per server, with its chests and accepted blocks
   resource-lists/   how far through each build you are
+  print-entities/   Creative entity attempts, preventing duplicates when continuing
 ```
 
 Placements are keyed by world or server address and written as soon as they change, so relogging does not lose them. The config screen also has **Export** and **Import** buttons that move the whole lot as a zip: Import opens your system's file dialogue and takes a `.zip`, a `.litematic` or a `.sschem`, several at once if you like. Dragging any of those straight onto that screen does the same.
-
-## Roadmap
-
-### Print mode
-
-A third mode alongside Scan and Build. You place a schematic as normal, confirm at a prompt, and the mod lays it out for you block by block, drawing from your inventory and any chests you have banked, or straight from the creative inventory when you are in creative.
-
-Shape of it:
-
-- **Bottom up, layer by layer.** Each layer is finished before the next starts, so nothing is ever placed against thin air.
-- **Entity-like things last.** Item frames, paintings, armour stands, banners on posts and anything else that hangs off a block it needs to already exist. Same for gravity blocks and torches, which want their support in place first.
-- **Slick placement.** A short animation per block and the block's own placement sound, paced rather than instant, so it reads as being built instead of appearing.
-- **Materials come from the same pool the resource list already counts:** inventory, offhand, banked chests. In creative it can pull whatever it needs directly.
-
-Things to work out before writing any of it:
-
-- **This is a client sending place packets, not a server-side build command.** On a multiplayer server it is indistinguishable from an auto-build hack, and most anti-cheat will treat it that way. It should almost certainly be singleplayer and creative only by default, with anything else behind a setting that says plainly what it is. Worth deciding early, because it shapes the whole feature.
-- **Reach and line of sight.** The server validates both. The printer either has to place only what is genuinely reachable from where you are standing and let you walk the build, or move the player itself, which is a much bigger and much more detectable thing to do.
-- **Block states are not just block types.** Stairs, slabs, doors, chests, observers and rotatable blocks all derive their state from where you stood, which face you clicked and whether you were sneaking. Getting a wall of stairs facing the right way is most of the work, and some states cannot be reached by placement at all.
-- **Failure has to be visible.** Out of materials, blocked by an existing block, or a state that could not be produced. The mismatch highlight already exists and is the natural place to show what was skipped.
 
 ## Litematica files
 

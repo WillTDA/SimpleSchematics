@@ -8,6 +8,7 @@ import dev.willtda.simpleschematics.gui.ResourceListScreen;
 import dev.willtda.simpleschematics.gui.SaveSchematicScreen;
 import dev.willtda.simpleschematics.placement.Placement;
 import dev.willtda.simpleschematics.placement.PlacementManager;
+import dev.willtda.simpleschematics.printing.PrintManager;
 import dev.willtda.simpleschematics.resource.Banks;
 import dev.willtda.simpleschematics.resource.BuildListManager;
 import dev.willtda.simpleschematics.resource.ResourceListManager;
@@ -47,12 +48,13 @@ import java.util.Map;
  * <ul>
  *   <li>M opens the library. Held down it is a prefix: M and P for placements,
  *       M and L for the resource list, M and T to switch the mod off.</li>
- *   <li>Ctrl and scroll swaps between Scan and Build.</li>
- *   <li>Shift and scroll steps through the layers in Build.</li>
+ *   <li>Ctrl and scroll moves between Scan, Build and Print.</li>
+ *   <li>Shift and scroll steps through the layers in Build and Print.</li>
  *   <li>Ctrl, Shift and scroll switches the mod on or off, as long as the
  *       activation item is in your hand.</li>
  *   <li>In Scan, right click sets the start corner and left click sets the end.</li>
  *   <li>In Build, your normal place block button drops the hologram.</li>
+ *   <li>In Print, right click or Enter starts the selected build.</li>
  * </ul>
  */
 public final class InputHandler {
@@ -232,12 +234,12 @@ public final class InputHandler {
         }
 
         if (ctrl) {
-            STATE.cycleMode();
+            STATE.setMode(direction > 0 ? STATE.mode().next() : STATE.mode().previous());
             event.setCanceled(true);
             return;
         }
 
-        if (shift && STATE.mode() == EditMode.BUILD) {
+        if (shift && STATE.mode() != EditMode.SCAN) {
             stepLayer(direction);
             event.setCanceled(true);
         }
@@ -282,7 +284,7 @@ public final class InputHandler {
     @SubscribeEvent
     public static void onInteraction(InputEvent.InteractionKeyMappingTriggered event) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) {
+        if (mc.player == null || mc.screen != null) {
             return;
         }
         if (event.isUseItem()) {
@@ -316,7 +318,7 @@ public final class InputHandler {
             return;
         }
 
-        if (STATE.mode() != EditMode.BUILD || !event.isUseItem()) {
+        if (!event.isUseItem()) {
             return;
         }
 
@@ -349,7 +351,17 @@ public final class InputHandler {
         }
 
         if (STATE.hasPending()) {
-            commitPending();
+            if (useArmed) {
+                useArmed = false;
+                commitPending();
+            }
+            event.setSwingHand(false);
+            event.setCanceled(true);
+        } else if (STATE.mode() == EditMode.PRINT) {
+            if (useArmed) {
+                useArmed = false;
+                PrintManager.INSTANCE.requestPrint();
+            }
             event.setSwingHand(false);
             event.setCanceled(true);
         }
@@ -512,6 +524,12 @@ public final class InputHandler {
         return lastUsedBlock;
     }
 
+    /** Automatic chest opens share the same snapshot owner as normal clicks. */
+    public static void recordUsedBlock(BlockPos pos) {
+        lastUsedBlock = pos == null ? null : pos.immutable();
+        lastUsedAge = 0;
+    }
+
     private static void setCorner(boolean start) {
         BlockPos pos = lookedAtBlock();
         if (pos == null) {
@@ -616,8 +634,8 @@ public final class InputHandler {
      * because it takes the choice out of your hands.</p>
      */
     private static void autoSelect(Minecraft mc) {
-        if (!SSConfig.INSTANCE.autoSelectLookedAt.get() || STATE.mode() != EditMode.BUILD
-                || mc.screen != null || STATE.hasPending()) {
+        if (!SSConfig.INSTANCE.autoSelectLookedAt.get() || STATE.mode() == EditMode.SCAN
+                || mc.screen != null || STATE.hasPending() || PrintManager.INSTANCE.isRunning()) {
             return;
         }
         Entity camera = mc.getCameraEntity();
@@ -680,7 +698,7 @@ public final class InputHandler {
      * away it simply finds nothing loaded and keeps what the last pass saw.</p>
      */
     private static void tickVerifier(Minecraft mc) {
-        boolean highlighting = STATE.mode() == EditMode.BUILD && SchematicVerifier.INSTANCE.isEnabled();
+        boolean highlighting = STATE.mode() != EditMode.SCAN && SchematicVerifier.INSTANCE.isEnabled();
         boolean following = SSConfig.INSTANCE.countPlacedBlocks.get() || STATE.buildListVisible();
         Placement followed = following && !STATE.hasPending()
                 ? PlacementManager.INSTANCE.selected()
@@ -767,12 +785,19 @@ public final class InputHandler {
             }
         }
 
+        // A confirmation screen owns Enter and Escape until it has closed.
+        if (mc.screen != null) {
+            drainPlainKeys();
+        }
+
         while (Keybinds.CONFIRM.consumeClick()) {
             handleConfirm(mc);
         }
 
         while (Keybinds.CLEAR.consumeClick()) {
-            if (STATE.hasPending()) {
+            if (PrintManager.INSTANCE.isRunning()) {
+                PrintManager.INSTANCE.pause();
+            } else if (STATE.hasPending()) {
                 STATE.cancelPending();
                 Feedback.info(Component.translatable("simpleschematics.feedback.placement_cancelled"));
             } else if (!STATE.selection().isEmpty()) {
@@ -792,6 +817,7 @@ public final class InputHandler {
         while (Keybinds.ROTATE.consumeClick()) {
             Placement placement = PlacementManager.INSTANCE.selected();
             if (placement != null) {
+                PrintManager.INSTANCE.pause();
                 placement.rotateClockwise();
                 PlacementManager.INSTANCE.markDirty();
                 Feedback.value(Component.translatable("simpleschematics.feedback.rotation"),
@@ -805,6 +831,7 @@ public final class InputHandler {
         while (Keybinds.MIRROR.consumeClick()) {
             Placement placement = PlacementManager.INSTANCE.selected();
             if (placement != null) {
+                PrintManager.INSTANCE.pause();
                 placement.cycleMirror();
                 PlacementManager.INSTANCE.markDirty();
                 Feedback.value(Component.translatable("simpleschematics.feedback.mirror"),
@@ -818,6 +845,7 @@ public final class InputHandler {
         PlacementManager.INSTANCE.tick();
         ResourceListManager.INSTANCE.tick();
         BuildListManager.INSTANCE.tick();
+        PrintManager.INSTANCE.tick();
 
         // Written back about once a second, so scrolling through the modes does
         // not rewrite the config file on every notch.
@@ -830,6 +858,9 @@ public final class InputHandler {
     private static int modeFlushCounter;
 
     private static void handleConfirm(Minecraft mc) {
+        if (mc.screen != null) {
+            return;
+        }
         if (STATE.mode() == EditMode.SCAN) {
             if (!STATE.selection().isComplete()) {
                 Feedback.error(Component.translatable(SSConfig.INSTANCE.swapScanCorners.get()
@@ -840,6 +871,8 @@ public final class InputHandler {
             mc.setScreen(new SaveSchematicScreen(null));
         } else if (STATE.hasPending()) {
             commitPending();
+        } else if (STATE.mode() == EditMode.PRINT) {
+            PrintManager.INSTANCE.requestPrint();
         } else {
             mc.setScreen(new LibraryScreen(null));
         }
