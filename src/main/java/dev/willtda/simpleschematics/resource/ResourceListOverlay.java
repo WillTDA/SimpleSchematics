@@ -6,8 +6,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.client.gui.overlay.ForgeGui;
-import net.minecraftforge.client.gui.overlay.IGuiOverlay;
 
 import java.util.List;
 
@@ -17,7 +15,7 @@ import java.util.List;
  * <p>The drawing lives in {@link OverlayPanel}, shared with the build list.
  * This decides whether the panel should be up and what goes on it.</p>
  */
-public final class ResourceListOverlay implements IGuiOverlay {
+public final class ResourceListOverlay {
 
     public static final ResourceListOverlay INSTANCE = new ResourceListOverlay();
 
@@ -31,8 +29,8 @@ public final class ResourceListOverlay implements IGuiOverlay {
         return footprint;
     }
 
-    @Override
-    public void render(ForgeGui gui, GuiGraphics graphics, float partialTick, int screenWidth, int screenHeight) {
+    /** Drawn by the loader's hud layer, above the hotbar. */
+    public void render(GuiGraphics graphics, float partialTick, int screenWidth, int screenHeight) {
         footprint = null;
         Minecraft mc = Minecraft.getInstance();
         ClientState state = ClientState.INSTANCE;

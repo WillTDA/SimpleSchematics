@@ -95,7 +95,7 @@ public final class SchematicVerifier {
      */
     public void setEnabled(boolean value) {
         SSConfig.INSTANCE.highlightMismatches.set(value);
-        SSConfig.SPEC.save();
+        SSConfig.FILE.save();
     }
 
     /**

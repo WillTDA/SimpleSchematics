@@ -131,7 +131,7 @@ public final class ResourceListScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderBackground(graphics);
+        Screens.background(this, graphics, mouseX, mouseY, partialTick);
         updateButtons();
 
         List<ResourceListManager.Row> rows = ResourceListManager.INSTANCE.rows();
@@ -157,7 +157,7 @@ public final class ResourceListScreen extends Screen {
                             ? "simpleschematics.feedback.resource_needs_target"
                             : "simpleschematics.resource.all_done"),
                     x + width / 2, top + 12, 0xFF9CA3AF);
-            super.render(graphics, mouseX, mouseY, partialTick);
+            Screens.widgets(this, graphics, mouseX, mouseY, partialTick);
             return;
         }
 
@@ -211,7 +211,7 @@ public final class ResourceListScreen extends Screen {
         graphics.drawCenteredString(this.font, Component.translatable("simpleschematics.gui.resource.hint"),
                 this.width / 2, hintY(), 0xFF6B7280);
 
-        super.render(graphics, mouseX, mouseY, partialTick);
+        Screens.widgets(this, graphics, mouseX, mouseY, partialTick);
     }
 
     private void drawRightAligned(GuiGraphics graphics, String text, int right, int y, int colour) {
@@ -245,7 +245,11 @@ public final class ResourceListScreen extends Screen {
     }
 
     @Override
+    //? if >=1.21 {
+    /*public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double delta) {
+    *///?} else {
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+    //?}
         if (hasShiftDown()) {
             ResourceListManager.Row row = rowAt(mouseX, mouseY);
             if (row != null) {

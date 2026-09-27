@@ -2,9 +2,9 @@ package dev.willtda.simpleschematics.util;
 
 import dev.willtda.simpleschematics.SimpleSchematics;
 import dev.willtda.simpleschematics.config.SSConfig;
+import dev.willtda.simpleschematics.platform.Platform;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ServerData;
-import net.minecraftforge.fml.loading.FMLPaths;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -34,7 +34,7 @@ public final class DataPaths {
         if (configured != null && !configured.isBlank()) {
             path = Paths.get(configured.trim());
         } else {
-            path = FMLPaths.GAMEDIR.get().resolve(SimpleSchematics.MOD_ID);
+            path = Platform.gameDir().resolve(SimpleSchematics.MOD_ID);
         }
         return ensure(path);
     }

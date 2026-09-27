@@ -1,10 +1,7 @@
 package dev.willtda.simpleschematics.render;
 
-import com.mojang.authlib.GameProfile;
-import com.mojang.authlib.minecraft.MinecraftProfileTexture;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.datafixers.util.Pair;
 import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.ShulkerModel;
@@ -24,11 +21,7 @@ import net.minecraft.client.resources.model.Material;
 import net.minecraft.client.resources.model.ModelBakery;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.Holder;
-import net.minecraft.core.UUIDUtil;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.NbtUtils;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.DyeColor;
@@ -53,9 +46,6 @@ import net.minecraft.world.level.block.TrappedChestBlock;
 import net.minecraft.world.level.block.WallBannerBlock;
 import net.minecraft.world.level.block.WallHangingSignBlock;
 import net.minecraft.world.level.block.WallSkullBlock;
-import net.minecraft.world.level.block.entity.BannerBlockEntity;
-import net.minecraft.world.level.block.entity.BannerPattern;
-import net.minecraft.world.level.block.entity.DecoratedPotBlockEntity;
 import net.minecraft.world.level.block.entity.DecoratedPotPatterns;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BedPart;
@@ -65,9 +55,28 @@ import net.minecraft.world.level.block.state.properties.RotationSegment;
 import net.minecraft.world.level.block.state.properties.WoodType;
 import net.minecraft.world.phys.AABB;
 import org.joml.Matrix4f;
+//? if >=1.21 {
+/*import net.minecraft.nbt.NbtOps;
+import net.minecraft.util.FastColor;
+import net.minecraft.world.item.component.ResolvableProfile;
+import net.minecraft.world.level.block.entity.BannerPatternLayers;
+import net.minecraft.world.level.block.entity.PotDecorations;
+import java.util.Optional;
+*///?} else {
+import com.mojang.authlib.GameProfile;
+import com.mojang.authlib.minecraft.MinecraftProfileTexture;
+import com.mojang.datafixers.util.Pair;
+import net.minecraft.core.Holder;
+import net.minecraft.core.UUIDUtil;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtUtils;
+import net.minecraft.world.level.block.entity.BannerBlockEntity;
+import net.minecraft.world.level.block.entity.BannerPattern;
+import net.minecraft.world.level.block.entity.DecoratedPotBlockEntity;
+import java.util.List;
+//?}
 
 import java.util.Calendar;
-import java.util.List;
 import java.util.function.Function;
 
 /**
@@ -126,6 +135,17 @@ final class EntityBlockStandIn {
         } else {
             boxes(level, state, pos, pose, builder, sprite);
         }
+    }
+
+    /**
+     * The blocks with no model at all, drawn by their block entity renderer
+     * alone, that a stand-in here covers. Barriers, light and the like are
+     * invisible too, and rightly have no ghost.
+     */
+    static boolean covers(BlockState state) {
+        Block block = state.getBlock();
+        return block instanceof SignBlock || block instanceof AbstractBannerBlock
+                || block instanceof AbstractSkullBlock || block instanceof DecoratedPotBlock;
     }
 
     /** Where the model parts write to: one builder per texture, shaded, with sprite UVs mapped. */
@@ -286,11 +306,15 @@ final class EntityBlockStandIn {
         ModelPart flag = root.getChild("flag");
         ModelPart pole = root.getChild("pole");
         ModelPart bar = root.getChild("bar");
+        //? if >=1.21 {
+        /*BannerPatternLayers patterns = bannerPatterns(tag);
+        *///?} else {
         ListTag saved = tag != null && tag.contains(BannerBlockEntity.TAG_PATTERNS, Tag.TAG_LIST)
                 ? tag.getList(BannerBlockEntity.TAG_PATTERNS, Tag.TAG_COMPOUND)
                 : null;
         List<Pair<Holder<BannerPattern>, DyeColor>> patterns =
                 BannerBlockEntity.createPatterns(banner.getColor(), saved);
+        //?}
 
         pose.pushPose();
         try {
@@ -312,6 +336,16 @@ final class EntityBlockStandIn {
             flag.xRot = 0.0F;
             flag.y = -32.0F;
             flag.render(pose, base, LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY);
+            //? if >=1.21 {
+            /*// The base colour is no longer the first pattern, but the renderer still lays it first.
+            flag.render(pose, sink.of(Sheets.BANNER_BASE), LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY,
+                    banner.getColor().getTextureDiffuseColor());
+            for (int i = 0; i < 16 && i < patterns.layers().size(); i++) {
+                BannerPatternLayers.Layer layer = patterns.layers().get(i);
+                flag.render(pose, sink.of(Sheets.getBannerMaterial(layer.pattern())), LightTexture.FULL_BRIGHT,
+                        OverlayTexture.NO_OVERLAY, layer.color().getTextureDiffuseColor());
+            }
+            *///?} else {
             for (int i = 0; i < 17 && i < patterns.size(); i++) {
                 Pair<Holder<BannerPattern>, DyeColor> pair = patterns.get(i);
                 float[] rgb = pair.getSecond().getTextureDiffuseColors();
@@ -319,10 +353,28 @@ final class EntityBlockStandIn {
                         flag.render(pose, sink.of(material), LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY,
                                 rgb[0], rgb[1], rgb[2], 1.0F));
             }
+            //?}
         } finally {
             pose.popPose();
         }
     }
+
+    //? if >=1.21 {
+    /*/^*
+     * Banner patterns became registry entries in 1.21 and arrive from the
+     * server, so reading them takes the level's registries.
+     ^/
+    private static BannerPatternLayers bannerPatterns(CompoundTag tag) {
+        var level = Minecraft.getInstance().level;
+        if (tag == null || level == null || !tag.contains("patterns")) {
+            return BannerPatternLayers.EMPTY;
+        }
+        return BannerPatternLayers.CODEC
+                .parse(level.registryAccess().createSerializationContext(NbtOps.INSTANCE), tag.get("patterns"))
+                .result()
+                .orElse(BannerPatternLayers.EMPTY);
+    }
+    *///?}
 
     // ---- shulker boxes ----------------------------------------------------
 
@@ -343,8 +395,12 @@ final class EntityBlockStandIn {
             // shut, which is the lid at rest
             model.getLid().setPos(0.0F, 24.0F, 0.0F);
             model.getLid().yRot = 0.0F;
+            //? if >=1.21 {
+            /*model.renderToBuffer(pose, sink.of(material), LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY);
+            *///?} else {
             model.renderToBuffer(pose, sink.of(material), LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY,
                     1.0F, 1.0F, 1.0F, 1.0F);
+            //?}
         } finally {
             pose.popPose();
         }
@@ -378,13 +434,34 @@ final class EntityBlockStandIn {
             }
             pose.scale(-1.0F, -1.0F, 1.0F);
             model.setupAnim(0.0F, yaw, 0.0F);
+            //? if >=1.21 {
+            /*model.renderToBuffer(pose, sink.plain(skinFor(type, tag)), LightTexture.FULL_BRIGHT,
+                    OverlayTexture.NO_OVERLAY);
+            *///?} else {
             model.renderToBuffer(pose, sink.plain(skinFor(type, tag)), LightTexture.FULL_BRIGHT,
                     OverlayTexture.NO_OVERLAY, 1.0F, 1.0F, 1.0F, 1.0F);
+            //?}
         } finally {
             pose.popPose();
         }
     }
 
+    //? if >=1.21 {
+    /*/^* From 1.20.5 the owner is a profile component, and the skin stays the default until it has arrived. ^/
+    private static ResourceLocation skinFor(SkullBlock.Type type, CompoundTag tag) {
+        ResourceLocation skin = SkullBlockRenderer.SKIN_BY_TYPE.get(type);
+        if (type != SkullBlock.Types.PLAYER || tag == null || !tag.contains("profile")) {
+            return skin != null ? skin : DefaultPlayerSkin.getDefaultTexture();
+        }
+        ResolvableProfile profile = ResolvableProfile.CODEC.parse(NbtOps.INSTANCE, tag.get("profile"))
+                .result()
+                .orElse(null);
+        if (profile == null) {
+            return DefaultPlayerSkin.getDefaultTexture();
+        }
+        return Minecraft.getInstance().getSkinManager().getInsecureSkin(profile.gameProfile()).texture();
+    }
+    *///?} else {
     private static ResourceLocation skinFor(SkullBlock.Type type, CompoundTag tag) {
         ResourceLocation skin = SkullBlockRenderer.SKIN_BY_TYPE.get(type);
         if (type != SkullBlock.Types.PLAYER || tag == null || !tag.contains("SkullOwner", Tag.TAG_COMPOUND)) {
@@ -401,20 +478,29 @@ final class EntityBlockStandIn {
                 ? mc.getSkinManager().registerTexture(texture, MinecraftProfileTexture.Type.SKIN)
                 : DefaultPlayerSkin.getDefaultSkin(UUIDUtil.getOrCreatePlayerUUID(profile));
     }
+    //?}
 
     // ---- decorated pots ---------------------------------------------------
 
     private static void decoratedPot(BlockState state, CompoundTag tag, PoseStack pose, Sink sink) {
         ModelPart base = layer(ModelLayers.DECORATED_POT_BASE);
         ModelPart sides = layer(ModelLayers.DECORATED_POT_SIDES);
+        //? if >=1.21 {
+        /*PotDecorations decorations = PotDecorations.load(tag);
+        *///?} else {
         DecoratedPotBlockEntity.Decorations decorations = DecoratedPotBlockEntity.Decorations.load(tag);
+        //?}
 
         pose.pushPose();
         try {
             pose.translate(0.5D, 0.0D, 0.5D);
             pose.mulPose(Axis.YP.rotationDegrees(180.0F - state.getValue(BlockStateProperties.HORIZONTAL_FACING).toYRot()));
             pose.translate(-0.5D, 0.0D, -0.5D);
+            //? if >=1.21 {
+            /*VertexConsumer plain = sink.of(Sheets.DECORATED_POT_BASE);
+            *///?} else {
             VertexConsumer plain = sink.of(Sheets.getDecoratedPotMaterial(DecoratedPotPatterns.BASE));
+            //?}
             for (String part : new String[] {"neck", "top", "bottom"}) {
                 base.getChild(part).render(pose, plain, LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY);
             }
@@ -427,6 +513,15 @@ final class EntityBlockStandIn {
         }
     }
 
+    //? if >=1.21 {
+    /*/^* A plain side, or the sherd's picture, the way the pot renderer chooses. ^/
+    private static void potSide(ModelPart side, Optional<Item> sherd, PoseStack pose, Sink sink) {
+        Material material = sherd
+                .map(item -> Sheets.getDecoratedPotMaterial(DecoratedPotPatterns.getPatternFromItem(item)))
+                .orElse(Sheets.DECORATED_POT_SIDE);
+        side.render(pose, sink.of(material), LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY);
+    }
+    *///?} else {
     private static void potSide(ModelPart side, Item sherd, PoseStack pose, Sink sink) {
         Material material = Sheets.getDecoratedPotMaterial(DecoratedPotPatterns.getResourceKey(sherd));
         if (material == null) {
@@ -436,6 +531,7 @@ final class EntityBlockStandIn {
             side.render(pose, sink.of(material), LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY);
         }
     }
+    //?}
 
     // ---- conduits ---------------------------------------------------------
 
@@ -469,6 +565,49 @@ final class EntityBlockStandIn {
             this.level = level;
         }
 
+        //? if >=1.21 {
+        /*/^* Every model part vertex arrives through here, whole. ^/
+        @Override
+        public void addVertex(float x, float y, float z, int colour, float u, float v, int overlay, int light,
+                              float nx, float ny, float nz) {
+            float shade = level.getShade(Direction.getNearest(nx, ny, nz), true);
+            int shaded = FastColor.ARGB32.color(FastColor.ARGB32.alpha(colour),
+                    (int) (FastColor.ARGB32.red(colour) * shade),
+                    (int) (FastColor.ARGB32.green(colour) * shade),
+                    (int) (FastColor.ARGB32.blue(colour) * shade));
+            delegate.addVertex(x, y, z, shaded, u, v, overlay, light, nx, ny, nz);
+        }
+
+        @Override
+        public VertexConsumer addVertex(float x, float y, float z) {
+            return delegate.addVertex(x, y, z);
+        }
+
+        @Override
+        public VertexConsumer setColor(int r, int g, int b, int a) {
+            return delegate.setColor(r, g, b, a);
+        }
+
+        @Override
+        public VertexConsumer setUv(float u, float v) {
+            return delegate.setUv(u, v);
+        }
+
+        @Override
+        public VertexConsumer setUv1(int u, int v) {
+            return delegate.setUv1(u, v);
+        }
+
+        @Override
+        public VertexConsumer setUv2(int u, int v) {
+            return delegate.setUv2(u, v);
+        }
+
+        @Override
+        public VertexConsumer setNormal(float x, float y, float z) {
+            return delegate.setNormal(x, y, z);
+        }
+        *///?} else {
         @Override
         public void vertex(float x, float y, float z, float r, float g, float b, float a,
                            float u, float v, int overlay, int light, float nx, float ny, float nz) {
@@ -520,6 +659,7 @@ final class EntityBlockStandIn {
         public void unsetDefaultColor() {
             delegate.unsetDefaultColor();
         }
+        //?}
     }
 
     // ---- the box fallback -------------------------------------------------
@@ -592,10 +732,17 @@ final class EntityBlockStandIn {
                              float ax, float ay, float az, float bx, float by, float bz,
                              float cx, float cy, float cz, float dx, float dy, float dz,
                              float u0, float v0, float u1, float v1) {
+        //? if >=1.21 {
+        /*float minU = sprite.getU(u0);
+        float maxU = sprite.getU(u1);
+        float minV = sprite.getV(v0);
+        float maxV = sprite.getV(v1);
+        *///?} else {
         float minU = sprite.getU(u0 * 16.0D);
         float maxU = sprite.getU(u1 * 16.0D);
         float minV = sprite.getV(v0 * 16.0D);
         float maxV = sprite.getV(v1 * 16.0D);
+        //?}
         vertex(builder, matrix, side, shade, ax, ay, az, minU, minV);
         vertex(builder, matrix, side, shade, bx, by, bz, minU, maxV);
         vertex(builder, matrix, side, shade, cx, cy, cz, maxU, maxV);
@@ -604,11 +751,19 @@ final class EntityBlockStandIn {
 
     private static void vertex(VertexConsumer builder, Matrix4f matrix, Direction side, float shade,
                                float x, float y, float z, float u, float v) {
+        //? if >=1.21 {
+        /*builder.addVertex(matrix, x, y, z)
+                .setColor(shade, shade, shade, 1.0F)
+                .setUv(u, v)
+                .setLight(LightTexture.FULL_BRIGHT)
+                .setNormal(side.getStepX(), side.getStepY(), side.getStepZ());
+        *///?} else {
         builder.vertex(matrix, x, y, z)
                 .color(shade, shade, shade, 1.0F)
                 .uv(u, v)
                 .uv2(LightTexture.FULL_BRIGHT)
                 .normal(side.getStepX(), side.getStepY(), side.getStepZ())
                 .endVertex();
+        //?}
     }
 }

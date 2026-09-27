@@ -99,6 +99,11 @@ public final class Schematic {
         return states;
     }
 
+    /** The palette entry at a schematic index, for walks that compare entries rather than states. */
+    public int paletteIndex(int index) {
+        return states[index];
+    }
+
     public boolean inBounds(int x, int y, int z) {
         return x >= 0 && y >= 0 && z >= 0 && x < width() && y < height() && z < length();
     }

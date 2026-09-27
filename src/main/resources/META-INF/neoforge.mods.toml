@@ -1,0 +1,34 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="${mod_licence}"
+issueTrackerURL="https://github.com/WillTDA/SimpleSchematics/issues"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+displayURL="https://github.com/WillTDA/SimpleSchematics"
+logoFile="icon.png"
+logoBlur=false
+credits="Inspired by Litematica by masa. Built independently, no shared code."
+authors="${mod_authors}"
+# Client only. NeoForge matches client and server on the network channels a mod
+# registers, and this one registers none, so a server never needs it installed.
+description='''Guided building made easy.'''
+
+[[mixins]]
+config="${mod_id}.mixins.json"
+
+[[dependencies.${mod_id}]]
+    modId="neoforge"
+    type="required"
+    versionRange="[21.1,)"
+    ordering="NONE"
+    side="CLIENT"
+
+[[dependencies.${mod_id}]]
+    modId="minecraft"
+    type="required"
+    versionRange="[1.21.1,1.21.2)"
+    ordering="NONE"
+    side="CLIENT"

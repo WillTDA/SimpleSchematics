@@ -6,6 +6,7 @@ import net.minecraft.core.HolderGetter;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.NbtUtils;
 import net.minecraft.nbt.Tag;
@@ -102,7 +103,11 @@ public final class SchematicIO {
     public static Schematic read(Path file) throws IOException {
         CompoundTag root;
         try (InputStream in = new BufferedInputStream(Files.newInputStream(file))) {
+            //? if >=1.21 {
+            /*root = NbtIo.readCompressed(in, NbtAccounter.unlimitedHeap());
+            *///?} else {
             root = NbtIo.readCompressed(in);
+            //?}
         }
         return fromTag(root);
     }
@@ -116,10 +121,11 @@ public final class SchematicIO {
             throw new IOException("The schematic has an invalid size of " + w + "x" + h + "x" + l);
         }
 
+        DataUpgrade upgrade = new DataUpgrade(root.getInt("DataVersion"));
         ListTag paletteTag = root.getList("Palette", Tag.TAG_COMPOUND);
         BlockState[] palette = new BlockState[Math.max(1, paletteTag.size())];
         for (int i = 0; i < paletteTag.size(); i++) {
-            palette[i] = readState(paletteTag.getCompound(i));
+            palette[i] = readState(upgrade.blockState(paletteTag.getCompound(i)));
         }
         if (paletteTag.isEmpty()) {
             palette[0] = Blocks.AIR.defaultBlockState();
@@ -148,7 +154,7 @@ public final class SchematicIO {
         }
 
         for (Tag tag : root.getList("BlockEntities", Tag.TAG_COMPOUND)) {
-            CompoundTag be = ((CompoundTag) tag).copy();
+            CompoundTag be = upgrade.blockEntity(((CompoundTag) tag).copy());
             BlockPos pos = new BlockPos(be.getInt("x"), be.getInt("y"), be.getInt("z"));
             be.remove("x");
             be.remove("y");
@@ -156,7 +162,7 @@ public final class SchematicIO {
             builder.setBlockEntity(pos, be);
         }
         for (Tag tag : root.getList("Entities", Tag.TAG_COMPOUND)) {
-            builder.addEntity(((CompoundTag) tag).copy());
+            builder.addEntity(upgrade.entity(((CompoundTag) tag).copy()));
         }
 
         CompoundTag metaTag = root.getCompound("Metadata");

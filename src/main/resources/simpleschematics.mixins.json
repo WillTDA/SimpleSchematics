@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.willtda.simpleschematics.mixin",
+  "compatibilityLevel": "${mixin_java}",
+  "refmap": "simpleschematics.refmap.json",
+  "client": [
+    "BlockItemInvoker",
+    "BlockStatePredictionHandlerAccessor",
+    "ClientLevelAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

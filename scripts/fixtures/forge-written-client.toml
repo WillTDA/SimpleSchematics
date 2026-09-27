@@ -1,0 +1,215 @@
+
+#General behaviour
+[general]
+	#The item you hold to use Simple Schematics. Use a registry id, for example minecraft:stick
+	toolItem = "minecraft:stick"
+	#Start the game with the mod switched on
+	enabledOnLaunch = true
+	#Require the tool item in hand before scroll shortcuts do anything
+	toolRequiredForHotkeys = true
+	#Show confirmations above the hotbar
+	actionBarFeedback = true
+	#Reverse the scroll direction for every Simple Schematics shortcut
+	invertScroll = false
+	#Take the menu key away from anything else bound to it, so holding it as a shortcut prefix does nothing else.
+	#Switch this off if a minimap or another mod shares the key and you would rather keep that.
+	#The chords go through vanilla again at that point, so rebind the Simple Schematics menu key under Controls as well
+	menuKeyBlocksOtherMods = false
+	#How far away, in blocks, you can set a selection corner
+	#Range: 8 ~ 512
+	maxSelectionReach = 128
+	#The mode you were last in. Set for you, not meant to be edited by hand
+	lastMode = "PRINT"
+	#Where schematics and saved data live. Leave blank for <game folder>/simpleschematics
+	#Point this at a synced folder such as OneDrive or Dropbox to share data between computers
+	dataDirectory = ""
+
+#Scan mode
+[scan]
+	#Colour of the start corner, as RRGGBB
+	startCornerColour = "36D399"
+	#Colour of the end corner, as RRGGBB
+	endCornerColour = "F87272"
+	#Colour of the bounding box, as RRGGBB
+	selectionBoxColour = "60A5FA"
+	#How solid the selection shading is, 0 for outline only
+	#Range: 0.0 ~ 0.6
+	selectionFillOpacity = 0.14
+	#Swap which mouse button sets which corner: left click for the start and right click for the end
+	swapScanCorners = false
+	#Show a white target marker in Scan mode while holding the tool
+	showTargetBlockOutline = true
+	#Tick the entities box by default on the save dialogue
+	saveEntitiesByDefault = true
+	#Tick the container contents box by default on the save dialogue
+	saveContainerContentsByDefault = true
+
+#Build mode and holograms
+[build]
+	#Show holograms. Remembered by the menu toggle and the hologram shortcut
+	renderHolograms = true
+	#How solid the hologram looks
+	#Range: 0.0 ~ 1.0
+	hologramOpacity = 0.65
+	#Draw a box around the hologram
+	hologramOutline = false
+	#Draw an edge around every block in the hologram, so the grid is readable
+	hologramBlockOutline = true
+	#Colour of those block edges, as RRGGBB
+	hologramBlockOutlineColour = "FFFFFF"
+	#How strong the block edges are
+	#Range: 0.0 ~ 1.0
+	hologramBlockOutlineOpacity = 0.2
+	#Only draw block edges within this many blocks of you, because they are not cheap
+	#Range: 4 ~ 64
+	hologramBlockOutlineDistance = 4
+	#Fade nearby ghost surfaces so you can see and build through them
+	hologramNearFade = true
+	#Distance in blocks at which nearby ghosts reach full configured opacity
+	#Range: 0.5 ~ 8.0
+	hologramFadeDistance = 2.0
+	#Pulse the hologram opacity slowly, so the ghosts stand out from the blocks around them
+	hologramBreathe = true
+	#How far each breath dips, as a fraction of the hologram opacity. 1 fades all the way out
+	#Range: 0.1 ~ 1.0
+	hologramBreatheDepth = 0.6
+	#Seconds one breath in and out takes
+	#Range: 0.5 ~ 10.0
+	hologramBreathePeriod = 1.5
+	#Outline blocks that are placed but are the wrong block
+	highlightMismatches = true
+	#Also outline blocks that are in the way and should not be there
+	highlightExtraBlocks = true
+	#Stop drawing the hologram for blocks you have already placed correctly
+	hideCorrectBlocks = true
+	#Also compare connections, power, waterlogging and other changing properties.
+	#Block type, facing, axis and basic shape are always checked.
+	#The expected state follows the placement rotation and mirror
+	strictStateMatch = false
+	#Colour for a wrong block, as RRGGBB
+	mismatchColour = "F87272"
+	#Colour for a block that should not be there, as RRGGBB
+	extraBlockColour = "FBBF24"
+	#How solid the highlight shading is, 0 for outline only
+	#Range: 0.0 ~ 0.8
+	highlightFillOpacity = 0.22
+	#Stop collecting highlights past this many, per placement
+	#Range: 64 ~ 100000
+	maxHighlights = 4096
+	#How many blocks to compare against the world each tick.
+	#Lower this if checking a very large build costs you frames
+	#Range: 500 ~ 200000
+	verifyBlocksPerTick = 8000
+	#Stop drawing the hologram past this many blocks
+	#Range: 32 ~ 512
+	hologramRenderDistance = 192
+	#Skip the live 3D preview in the library for schematics larger than this
+	#Range: 1000 ~ 5000000
+	maxPreviewBlocks = 120000
+	#Play a hi hat tick when you change layer
+	layerScrollSound = true
+	#Volume of the layer tick
+	#Range: 0.0 ~ 1.0
+	layerScrollVolume = 0.6
+	#Selecting whichever placement you are looking at, instead of choosing one from the list
+	autoSelectLookedAt = false
+	#Snap a new placement to the block you are looking at rather than free floating
+	snapPlacementToGrid = true
+	#How to draw the holograms while a shader pack is running.
+	#Iris and Oculus replace the level render and ignore this mod's own shader, which leaves the ghosts invisible,
+	#so AUTO switches to a plain vanilla render type whenever a pack is loaded. The near fade and the distance
+	#fade are lost on that path; opacity is not. ALWAYS forces it, NEVER keeps this mod's shader whatever is installed
+	#Allowed Values: AUTO, ALWAYS, NEVER
+	shaderPackCompat = "AUTO"
+
+#Print mode
+[print]
+	#Where Survival printing takes materials from. Linked chests must be accessible and in reach
+	#Allowed Values: INVENTORY, LINKED_CHESTS, BOTH
+	printSource = "BOTH"
+	#Ticks between Survival block placements. Twenty ticks is one second
+	#Range: 1 ~ 40
+	printDelay = 4
+	#Paste Creative builds as fast as the server accepts commands instead of at a steady pace.
+	#Needs operator permission, or cheats in singleplayer
+	printInstant = true
+	#Play each block's placement sound while printing
+	printSounds = true
+	#Show a small burst of particles at each printed block
+	printParticles = true
+	#Ask before Survival printing and remind you to check the server's automation rules
+	printWarnSurvival = true
+	#Ask before starting a print without all the required materials
+	printWarnMissing = true
+	#Allow an operator to replace blocks in the way. Other players must clear them by hand
+	printReplaceBlocks = false
+	#Include saved entities when printing in Creative. Survival never prints entities
+	printEntities = true
+	#Include saved container contents when printing in Creative. Survival never prints contents
+	printContents = true
+
+#Resource list
+[resource_list]
+	#Show the resource list for schematics being positioned. Existing placements remember their own choice
+	resourceListVisible = false
+	#Show the resource list overlay when a schematic is targeted
+	resourceListEnabled = true
+	#Which corner the list sits in
+	#Allowed Values: TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT
+	resourceListAnchor = "BOTTOM_RIGHT"
+	#Horizontal nudge away from the chosen corner, in pixels
+	#Range: 0 ~ 400
+	resourceListOffsetX = 4
+	#Vertical nudge away from the chosen corner, in pixels
+	#Range: 0 ~ 400
+	resourceListOffsetY = 4
+	#Size of the list relative to the rest of the interface
+	#Range: 0.4 ~ 2.0
+	resourceListScale = 0.5
+	#The widest the list may get, in pixels before scaling.
+	#The panel is measured from the names it is drawing and only trims them once it reaches this
+	#Range: 120 ~ 500
+	resourceListMaxWidth = 240
+	#How many item rows to show at once
+	#Range: 1 ~ 40
+	resourceListMaxRows = 10
+	#How dark the panel behind the list is
+	#Range: 0.0 ~ 1.0
+	resourceListBackgroundOpacity = 0.55
+	#Automatically knock items off the list once you are carrying enough
+	removeCollectedItems = true
+	#Count items sitting in a chest while its screen is open
+	countOpenContainers = true
+	#Count items in your ender chest the last time you opened it
+	countEnderChest = true
+	#Show totals as stacks plus a remainder
+	showStackBreakdown = true
+	#Hide rows once they are fully gathered
+	hideCompletedRows = true
+	#Take blocks already standing correctly in the placement off what is still needed.
+	#Only loaded chunks can be checked, so a distant build reads as untouched until you visit it
+	countPlacedBlocks = true
+	#Name the build the list is following, above the list itself
+	showBuildName = true
+
+#Build list
+#The panel that says what is still to place for the layer you are looking at.
+#Size, width, panel darkness and the stack breakdown are shared with the resource list
+[build_list]
+	#Show the build list for schematics being positioned. Existing placements remember their own choice
+	buildListVisible = false
+	#Show the build list overlay when it is switched on for a build
+	buildListEnabled = true
+	#Which corner the list sits in. Sharing a corner with the resource list stacks the two
+	#Allowed Values: TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT
+	buildListAnchor = "TOP_RIGHT"
+	#Horizontal nudge away from the chosen corner, in pixels
+	#Range: 0 ~ 400
+	buildListOffsetX = 4
+	#Vertical nudge away from the chosen corner, in pixels
+	#Range: 0 ~ 400
+	buildListOffsetY = 4
+	#How many item rows to show at once
+	#Range: 1 ~ 40
+	buildListMaxRows = 10
+

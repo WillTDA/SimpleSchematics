@@ -3,6 +3,7 @@ package dev.willtda.simpleschematics.config;
 import dev.willtda.simpleschematics.SimpleSchematics;
 import dev.willtda.simpleschematics.client.ClientState;
 import dev.willtda.simpleschematics.client.Feedback;
+import dev.willtda.simpleschematics.gui.Screens;
 import dev.willtda.simpleschematics.render.SchematicVerifier;
 import dev.willtda.simpleschematics.render.ShaderPackCompat;
 import dev.willtda.simpleschematics.render.WorldRenderer;
@@ -18,7 +19,6 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
-import net.minecraftforge.common.ForgeConfigSpec;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -176,7 +176,7 @@ public final class ConfigScreen extends Screen {
             c.hologramBreatheDepth.set(0.6D);
             c.hologramBreathePeriod.set(1.5D);
             c.showTargetBlockOutline.set(true);
-            SSConfig.SPEC.save();
+            SSConfig.FILE.save();
             WorldRenderer.invalidateAll();
             rebuildWidgets();
         });
@@ -195,6 +195,8 @@ public final class ConfigScreen extends Screen {
                 "simpleschematics.tip.print.source");
         intSlider("simpleschematics.config.printDelay", x, fieldWidth, c.printDelay, 1, 40,
                 "simpleschematics.tip.print.delay");
+        toggle("simpleschematics.config.printInstant", x, fieldWidth, c.printInstant,
+                "simpleschematics.tip.print.instant");
         toggle("simpleschematics.config.printSounds", x, fieldWidth, c.printSounds,
                 "simpleschematics.tip.print.sounds");
         toggle("simpleschematics.config.printParticles", x, fieldWidth, c.printParticles);
@@ -283,14 +285,14 @@ public final class ConfigScreen extends Screen {
         rows.add(new Row(key, null, true, null));
     }
 
-    private void toggle(String key, int x, int width, ForgeConfigSpec.BooleanValue value) {
+    private void toggle(String key, int x, int width, ConfigFile.BooleanValue value) {
         toggle(key, x, width, value, null);
     }
 
-    private void toggle(String key, int x, int width, ForgeConfigSpec.BooleanValue value, String tipKey) {
+    private void toggle(String key, int x, int width, ConfigFile.BooleanValue value, String tipKey) {
         Button button = Button.builder(state(value.get()), b -> {
             value.set(!value.get());
-            SSConfig.SPEC.save();
+            SSConfig.FILE.save();
             b.setMessage(state(value.get()));
             rebuildWidgets();
         }).bounds(x, 0, width, 20).build();
@@ -333,16 +335,16 @@ public final class ConfigScreen extends Screen {
     }
 
     private <E extends Enum<E>> void choice(String key, int x, int width,
-                                            ForgeConfigSpec.EnumValue<E> value, E[] all) {
+                                            ConfigFile.EnumValue<E> value, E[] all) {
         choice(key, x, width, value, all, null);
     }
 
     /** Steps through the values of an enum setting, one click at a time. */
     private <E extends Enum<E>> void choice(String key, int x, int width,
-                                            ForgeConfigSpec.EnumValue<E> value, E[] all, String tipKey) {
+                                            ConfigFile.EnumValue<E> value, E[] all, String tipKey) {
         Button button = Button.builder(Component.literal(pretty(value.get().name())), b -> {
             value.set(all[(value.get().ordinal() + 1) % all.length]);
-            SSConfig.SPEC.save();
+            SSConfig.FILE.save();
             b.setMessage(Component.literal(pretty(value.get().name())));
             WorldRenderer.invalidateAll();
         }).bounds(x, 0, width, 20).build();
@@ -352,22 +354,22 @@ public final class ConfigScreen extends Screen {
         rows.add(new Row(key, addWidget(button), false, null));
     }
 
-    private void text(String key, int x, int width, ForgeConfigSpec.ConfigValue<String> value) {
+    private void text(String key, int x, int width, ConfigFile.StringValue value) {
         EditBox box = new EditBox(this.font, x, 0, width, 20, Component.translatable(key));
         box.setMaxLength(256);
         box.setValue(value.get());
         box.setResponder(v -> {
             value.set(v);
-            SSConfig.SPEC.save();
+            SSConfig.FILE.save();
         });
         rows.add(new Row(key, addWidget(box), false, null));
     }
 
-    private void intSlider(String key, int x, int width, ForgeConfigSpec.IntValue cfg, int min, int max) {
+    private void intSlider(String key, int x, int width, ConfigFile.IntValue cfg, int min, int max) {
         intSlider(key, x, width, cfg, min, max, null);
     }
 
-    private void intSlider(String key, int x, int width, ForgeConfigSpec.IntValue cfg,
+    private void intSlider(String key, int x, int width, ConfigFile.IntValue cfg,
                            int min, int max, String tipKey) {
         AbstractSliderButton slider = new AbstractSliderButton(x, 0, width, 20,
                 Component.literal(String.valueOf(cfg.get())),
@@ -380,7 +382,7 @@ public final class ConfigScreen extends Screen {
             @Override
             protected void applyValue() {
                 cfg.set(min + (int) Math.round(this.value * (max - min)));
-                SSConfig.SPEC.save();
+                SSConfig.FILE.save();
             }
         };
         if (tipKey != null) {
@@ -389,7 +391,7 @@ public final class ConfigScreen extends Screen {
         rows.add(new Row(key, addWidget(slider), false, null));
     }
 
-    private void doubleSlider(String key, int x, int width, ForgeConfigSpec.DoubleValue cfg,
+    private void doubleSlider(String key, int x, int width, ConfigFile.DoubleValue cfg,
                               double min, double max) {
         AbstractSliderButton slider = new AbstractSliderButton(x, 0, width, 20,
                 Component.literal(String.format("%.2f", cfg.get())),
@@ -402,7 +404,7 @@ public final class ConfigScreen extends Screen {
             @Override
             protected void applyValue() {
                 cfg.set(min + this.value * (max - min));
-                SSConfig.SPEC.save();
+                SSConfig.FILE.save();
             }
         };
         rows.add(new Row(key, addWidget(slider), false, null));
@@ -456,7 +458,7 @@ public final class ConfigScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderBackground(graphics);
+        Screens.background(this, graphics, mouseX, mouseY, partialTick);
         scroll = Mth.clamp(scroll, 0, maxScroll());
 
         int top = listTop();
@@ -500,7 +502,7 @@ public final class ConfigScreen extends Screen {
         }
         graphics.disableScissor();
 
-        super.render(graphics, mouseX, mouseY, partialTick);
+        Screens.widgets(this, graphics, mouseX, mouseY, partialTick);
 
         if (maxScroll() > 0) {
             int trackHeight = bottom - top;
@@ -516,8 +518,13 @@ public final class ConfigScreen extends Screen {
     }
 
     @Override
+    //? if >=1.21 {
+    /*public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double delta) {
+        if (super.mouseScrolled(mouseX, mouseY, scrollX, delta)) {
+    *///?} else {
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
         if (super.mouseScrolled(mouseX, mouseY, delta)) {
+    //?}
             return true;
         }
         scroll -= (int) (delta * ROW_HEIGHT);
@@ -553,7 +560,7 @@ public final class ConfigScreen extends Screen {
     @Override
     public void removed() {
         ClientState.INSTANCE.flushMode();
-        SSConfig.SPEC.save();
+        SSConfig.FILE.save();
         dev.willtda.simpleschematics.placement.PlacementManager.INSTANCE.saveIfDirty();
         super.removed();
     }

@@ -2,7 +2,12 @@ package dev.willtda.simpleschematics.render;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
+//? if >=1.21 {
+/*import com.mojang.blaze3d.vertex.ByteBufferBuilder;
+import org.joml.Matrix4fStack;
+*///?} else {
 import com.mojang.blaze3d.vertex.BufferBuilder;
+//?}
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.willtda.simpleschematics.client.ClientState;
 import dev.willtda.simpleschematics.client.EditMode;
@@ -26,8 +31,6 @@ import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.minecraftforge.client.event.RenderLevelStageEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
 import org.joml.Matrix4f;
 
 import java.util.HashMap;
@@ -42,8 +45,13 @@ public final class WorldRenderer {
 
     /** One baked copy per schematic, shared between every placement that uses it. */
     private static final Map<String, BakedSchematic> CACHE = new HashMap<>();
+    //? if >=1.21 {
+    /*private static final MultiBufferSource.BufferSource OVERLAYS =
+            MultiBufferSource.immediate(new ByteBufferBuilder(16384));
+    *///?} else {
     private static final MultiBufferSource.BufferSource OVERLAYS =
             MultiBufferSource.immediate(new BufferBuilder(16384));
+    //?}
     private static int reloadGeneration;
 
     /**
@@ -64,11 +72,11 @@ public final class WorldRenderer {
      * gave it. AFTER_LEVEL is no use here, because Forge hands that stage the
      * projection pose rather than the level's camera pose.</p>
      */
-    @SubscribeEvent
-    public static void onRenderLevel(RenderLevelStageEvent event) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_WEATHER) {
-            return;
-        }
+    /**
+     * Draws the holograms and the scan selection. The loader calls this once a
+     * frame after the weather, which is after the clouds and the translucent pass.
+     */
+    public static void render(PoseStack pose, Matrix4f projection, net.minecraft.client.Camera view) {
         Minecraft mc = Minecraft.getInstance();
         ClientState state = ClientState.INSTANCE;
         if (mc.level == null || mc.player == null || !state.isEnabled() || mc.options.hideGui) {
@@ -81,13 +89,17 @@ public final class WorldRenderer {
             return;
         }
 
-        Vec3 camera = event.getCamera().getPosition();
-        PoseStack pose = event.getPoseStack();
-        Matrix4f projection = event.getProjectionMatrix();
+        Vec3 camera = view.getPosition();
 
+        //? if >=1.21 {
+        /*Matrix4fStack modelView = RenderSystem.getModelViewStack();
+        modelView.pushMatrix();
+        modelView.identity();
+        *///?} else {
         PoseStack modelView = RenderSystem.getModelViewStack();
         modelView.pushPose();
         modelView.setIdentity();
+        //?}
         RenderSystem.applyModelViewMatrix();
 
         pose.pushPose();
@@ -102,7 +114,11 @@ public final class WorldRenderer {
             }
         } finally {
             pose.popPose();
+            //? if >=1.21 {
+            /*modelView.popMatrix();
+            *///?} else {
             modelView.popPose();
+            //?}
             RenderSystem.applyModelViewMatrix();
         }
     }

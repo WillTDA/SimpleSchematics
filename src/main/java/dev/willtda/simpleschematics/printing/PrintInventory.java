@@ -1,8 +1,9 @@
 package dev.willtda.simpleschematics.printing;
 
+import dev.willtda.simpleschematics.client.InputHandler;
 import dev.willtda.simpleschematics.placement.Placement;
 import dev.willtda.simpleschematics.placement.PlacementManager;
-import dev.willtda.simpleschematics.client.InputHandler;
+import dev.willtda.simpleschematics.platform.Platform;
 import dev.willtda.simpleschematics.resource.Banks;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -14,7 +15,11 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.inventory.*;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+//? if >=1.21 {
+/*import net.minecraft.core.component.DataComponents;
+*///?} else {
 import net.minecraft.world.item.BlockItem;
+//?}
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.level.ClipContext;
@@ -24,6 +29,14 @@ import java.util.*;
 
 /** Normal menu clicks only: cached chest counts never create spendable materials. */
 final class PrintInventory {
+    /**
+     * A container the printer asked for just before it stopped. The server
+     * still opens it a moment later, and it has to be shut again rather than
+     * left on the player's screen with nothing driving it.
+     */
+    private static BlockPos orphan;
+    private static long orphanUntil;
+
     final ResourceBudget<Item> budget;
     private final Set<BlockPos> visited = new HashSet<>();
     private BlockPos opening;
@@ -53,8 +66,25 @@ final class PrintInventory {
     }
 
     private static boolean usable(ItemStack stack, boolean creative) {
-        return !stack.isEmpty() && stack.getTagElement(BlockItem.BLOCK_STATE_TAG) == null
-                && (creative || stack.getTagElement(BlockItem.BLOCK_ENTITY_TAG) == null);
+        return !stack.isEmpty() && !carriesState(stack) && (creative || !carriesBlockEntity(stack));
+    }
+
+    /** An item that places a fixed block state, such as a picked up bee nest full of honey. */
+    static boolean carriesState(ItemStack stack) {
+        //? if >=1.21 {
+        /*return stack.has(DataComponents.BLOCK_STATE);
+        *///?} else {
+        return stack.getTagElement(BlockItem.BLOCK_STATE_TAG) != null;
+        //?}
+    }
+
+    /** An item that places a block with contents, such as a filled chest picked with ctrl. */
+    static boolean carriesBlockEntity(ItemStack stack) {
+        //? if >=1.21 {
+        /*return stack.has(DataComponents.BLOCK_ENTITY_DATA);
+        *///?} else {
+        return stack.getTagElement(BlockItem.BLOCK_ENTITY_TAG) != null;
+        //?}
     }
 
     static ItemStack eligibleStack(Minecraft mc, Item item, boolean creative) {
@@ -77,7 +107,7 @@ final class PrintInventory {
     }
 
     static boolean reachable(Minecraft mc, BlockPos pos) {
-        double range = mc.player.getBlockReach();
+        double range = Platform.blockReach(mc.player);
         return mc.player.getEyePosition().distanceToSqr(Vec3.atCenterOf(pos)) <= range * range;
     }
 
@@ -196,10 +226,46 @@ final class PrintInventory {
     }
 
     void close(Minecraft mc) {
-        if (mc.player != null && ownsScreen(mc)) mc.player.closeContainer();
+        if (mc.player != null && ownsScreen(mc)) {
+            mc.player.closeContainer();
+        } else if (opening != null && mc.player != null) {
+            orphan = opening;
+            orphanUntil = System.currentTimeMillis() + responseTicks(mc) * 50L * 2;
+        }
         opening = null;
         ownedMenu = null;
         transferring = null;
+    }
+
+    /**
+     * Gives up on a container that has not opened yet, without touching the
+     * screen the player has just opened in front of it.
+     */
+    void abandon() {
+        opening = null;
+        ownedMenu = null;
+        transferring = null;
+    }
+
+    /** Shuts a container that arrives after printing stopped. Runs whether printing or not. */
+    static void tickOrphan(Minecraft mc) {
+        if (orphan == null) return;
+        if (System.currentTimeMillis() > orphanUntil || mc.player == null || mc.level == null) {
+            orphan = null;
+            return;
+        }
+        BlockPos last = InputHandler.lastUsedBlock();
+        if (last != null && !Banks.canonical(mc.level, orphan).equals(Banks.canonical(mc.level, last))) {
+            // The player has clicked something of their own since, which is theirs to keep open.
+            orphan = null;
+            return;
+        }
+        if (mc.player.containerMenu != mc.player.inventoryMenu && mc.screen instanceof AbstractContainerScreen<?>) {
+            mc.player.closeContainer();
+            orphan = null;
+        } else if (mc.screen == null) {
+            InputHandler.recordUsedBlock(orphan);
+        }
     }
 
     /** The caller restores the slot in a finally block after the use packet. */

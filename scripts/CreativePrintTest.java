@@ -1,6 +1,5 @@
 package dev.willtda.simpleschematics.printing;
 
-import com.electronwill.nightconfig.core.CommentedConfig;
 import com.google.gson.JsonParser;
 import com.mojang.brigadier.StringReader;
 import dev.willtda.simpleschematics.config.SSConfig;
@@ -31,9 +30,6 @@ public final class CreativePrintTest {
 
     public static void main(String[] args) throws Exception {
         PrintTestBootstrap.initialise();
-        CommentedConfig config = CommentedConfig.inMemory();
-        SSConfig.SPEC.correct(config);
-        SSConfig.SPEC.setConfig(config);
         transforms();
         hangingEntities();
         carrierTransfer();

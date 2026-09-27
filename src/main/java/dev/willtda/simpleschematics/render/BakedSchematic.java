@@ -15,7 +15,11 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
+//? if forge {
 import net.minecraftforge.client.model.data.ModelData;
+//?} else {
+/*import net.neoforged.neoforge.client.model.data.ModelData;
+*///?}
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
@@ -60,6 +64,7 @@ public final class BakedSchematic implements AutoCloseable {
         return ((y / SECTION) * sectionsAcross(schematic.length()) + z / SECTION)
                 * sectionsAcross(schematic.width()) + x / SECTION;
     }
+    //? if <1.21 {
     /**
      * Elements a re-sort builder must be able to hold. {@link BufferBuilder}
      * allocates six bytes per element, and the buffer has to cover both the
@@ -77,6 +82,7 @@ public final class BakedSchematic implements AutoCloseable {
         long elements = (vertexBytes + indexBytes + 5L) / 6L;
         return (int) Math.max(4096L, Math.min(elements, Integer.MAX_VALUE / 6L));
     }
+    //?}
 
     // ---- shared builders --------------------------------------------------
 
@@ -92,8 +98,32 @@ public final class BakedSchematic implements AutoCloseable {
      * buffer, the geometry it was handed was whatever happened to be there.
      * One set, kept for the life of the game, is the vanilla arrangement.</p>
      *
+     * <p>From 1.21 the memory is a {@link ByteBufferBuilder} that grows by
+     * itself, and a {@link BufferBuilder} is only a light writer over it, made
+     * fresh for each bake. The rule is the same: the memory is what is kept.</p>
+     *
      * <p>All of it runs on the render thread, so nothing here needs a lock.</p>
      */
+    //? if >=1.21 {
+    /*private static ByteBufferBuilder bakeMemory = new ByteBufferBuilder(262144);
+    private static final Map<ResourceLocation, ByteBufferBuilder> SHEET_MEMORY = new LinkedHashMap<>();
+    /^* Index buffers, written for a bake and again for every re-sort. ^/
+    private static final ByteBufferBuilder SORT_MEMORY = new ByteBufferBuilder(16384);
+
+    /^*
+     * Frees the memory a failed bake was writing into and starts it afresh. A
+     * builder that never finished leaves its bytes behind, and the next bake
+     * would pick them up in front of its own.
+     ^/
+    private static void abandon(Collection<ResourceLocation> sheets) {
+        bakeMemory.close();
+        bakeMemory = new ByteBufferBuilder(262144);
+        for (ResourceLocation sheet : sheets) {
+            ByteBufferBuilder memory = SHEET_MEMORY.remove(sheet);
+            if (memory != null) memory.close();
+        }
+    }
+    *///?} else {
     private static final BufferBuilder BAKE = new BufferBuilder(262144);
     private static final Map<ResourceLocation, BufferBuilder> SHEET_BUILDERS = new LinkedHashMap<>();
     private static BufferBuilder sortBuilder;
@@ -119,6 +149,7 @@ public final class BakedSchematic implements AutoCloseable {
         }
         return ready(sortBuilder);
     }
+    //?}
 
     public boolean isReady() { return pending.isEmpty(); }
     public int pendingCount() { return pending.size(); }
@@ -354,12 +385,18 @@ public final class BakedSchematic implements AutoCloseable {
     private final class Mesh {
         final ResourceLocation texture;
         VertexBuffer buffer;
-        BufferBuilder.SortState sortState;
         Vector3f sortedEye;
+        //? if >=1.21 {
+        /*MeshData.SortState sortState;
+        /^* Whether a shader pack was in use at the bake, since it widens the vertices. ^/
+        boolean bakedForPack;
+        *///?} else {
+        BufferBuilder.SortState sortState;
         /** Vertices behind {@link #sortState}; needed to size the re-sort buffer. */
         int sortVertices;
         /** The format the vertices went up in, which a shader mod may have widened. */
         VertexFormat format;
+        //?}
 
         Mesh(ResourceLocation texture) { this.texture = texture; }
 
@@ -371,12 +408,65 @@ public final class BakedSchematic implements AutoCloseable {
         void discard() {
             if (buffer != null) buffer.close();
             buffer = null;
-            sortState = null;
             sortedEye = null;
-            sortVertices = 0;
-            format = null;
+            forgetSort();
         }
 
+        /** Leaves the quads in the order they are in; they still draw. */
+        void forgetSort() {
+            sortState = null;
+            //? if <1.21 {
+            sortVertices = 0;
+            format = null;
+            //?}
+        }
+
+        VertexSorting sorting(Section section) {
+            return VertexSorting.byDistance(eye.x - section.x, eye.y - section.y, eye.z - section.z);
+        }
+
+        //? if >=1.21 {
+        /*/^*
+         * Re-sorts the existing quads for the current eye without rebuilding any
+         * block models. Only a new index buffer goes up; the vertices stay.
+         *
+         * @return false when the mesh cannot be re-sorted and wants baking
+         *         again instead
+         ^/
+        boolean sort(Section section) {
+            // A shader pack coming or going changes the layout of the vertices
+            // every builder writes, so the ones already up are the wrong shape.
+            if (bakedForPack != ShaderPackCompat.shaderPackInUse()) {
+                return false;
+            }
+            ByteBufferBuilder.Result indices = sortState.buildSortedIndexBuffer(SORT_MEMORY, sorting(section));
+            if (indices == null) {
+                return true;
+            }
+            buffer.bind();
+            // uploadIndexBuffer() hands the indices' memory back when it is done
+            try { buffer.uploadIndexBuffer(indices); }
+            finally { VertexBuffer.unbind(); }
+            sortedEye = new Vector3f(eye);
+            return true;
+        }
+
+        /^* Builds what the builder holds, sorted from the current eye, and uploads it. Empty geometry leaves no buffer. ^/
+        void upload(Section section, BufferBuilder builder) {
+            MeshData mesh = builder.build();
+            if (mesh == null) return;
+            // upload() closes the mesh too; closing twice is harmless, leaking it is not
+            try (mesh) {
+                sortState = mesh.sortQuads(SORT_MEMORY, sorting(section));
+                buffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
+                buffer.bind();
+                try { buffer.upload(mesh); }
+                finally { VertexBuffer.unbind(); }
+            }
+            bakedForPack = ShaderPackCompat.shaderPackInUse();
+            sortedEye = new Vector3f(eye);
+        }
+        *///?} else {
         /**
          * Re-sorts the existing quads for the current eye without rebuilding any
          * block models.
@@ -397,7 +487,7 @@ public final class BakedSchematic implements AutoCloseable {
             BufferBuilder indices = sortBuilder(sortCapacity(sortVertices, format));
             indices.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
             indices.restoreSortState(sortState);
-            indices.setQuadSorting(VertexSorting.byDistance(eye.x - section.x, eye.y - section.y, eye.z - section.z));
+            indices.setQuadSorting(sorting(section));
             BufferBuilder.RenderedBuffer rendered = indices.end();
             // A shader pack coming or going changes the layout every builder
             // writes. Uploading indices in the new layout over vertices in the
@@ -417,7 +507,7 @@ public final class BakedSchematic implements AutoCloseable {
 
         /** Takes the finished builder, sorted from the current eye, and uploads it. Empty geometry leaves no buffer. */
         void upload(Section section, BufferBuilder builder) {
-            builder.setQuadSorting(VertexSorting.byDistance(eye.x - section.x, eye.y - section.y, eye.z - section.z));
+            builder.setQuadSorting(sorting(section));
             BufferBuilder.SortState sorted = builder.getSortState();
             BufferBuilder.RenderedBuffer rendered = builder.end();
             if (rendered.isEmpty()) { rendered.release(); return; }
@@ -433,6 +523,7 @@ public final class BakedSchematic implements AutoCloseable {
             format = uploaded;
             sortedEye = new Vector3f(eye);
         }
+        //?}
 
         void draw(Section section, Matrix4f base, Matrix4f projection, ShaderInstance shader) {
             if (buffer == null) return;
@@ -482,8 +573,7 @@ public final class BakedSchematic implements AutoCloseable {
             } catch (Exception e) {
                 // A mesh that cannot be re-sorted still draws, just in its
                 // old order. Losing the whole frame would be worse.
-                mesh.sortState = null;
-                mesh.sortVertices = 0;
+                mesh.forgetSort();
                 SimpleSchematics.LOG.error("Could not re-sort a section of {}", schematic.meta().name, e);
             }
         }
@@ -493,12 +583,22 @@ public final class BakedSchematic implements AutoCloseable {
             var dispatcher = Minecraft.getInstance().getBlockRenderer();
             RandomSource random = RandomSource.create();
             PoseStack pose = new PoseStack();
-            BufferBuilder builder = ready(BAKE);
-            builder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
             // Builders for the chest and bed sheets, begun only when something
             // asks for them, since most sections have neither. The ones in use
             // this time are noted so that only they are ended.
             Map<ResourceLocation, BufferBuilder> sheetBuilders = new LinkedHashMap<>();
+            //? if >=1.21 {
+            /*BufferBuilder builder = new BufferBuilder(bakeMemory, VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
+            Function<ResourceLocation, VertexConsumer> sheetFor = texture -> {
+                // a conduit's shell lives on the block atlas, so it joins the block mesh
+                if (texture.equals(TextureAtlas.LOCATION_BLOCKS)) return builder;
+                return sheetBuilders.computeIfAbsent(texture, t -> new BufferBuilder(
+                        SHEET_MEMORY.computeIfAbsent(t, k -> new ByteBufferBuilder(16384)),
+                        VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK));
+            };
+            *///?} else {
+            BufferBuilder builder = ready(BAKE);
+            builder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
             Function<ResourceLocation, VertexConsumer> sheetFor = texture -> {
                 // a conduit's shell lives on the block atlas, so it joins the block mesh
                 if (texture.equals(TextureAtlas.LOCATION_BLOCKS)) return builder;
@@ -508,6 +608,7 @@ public final class BakedSchematic implements AutoCloseable {
                     return b;
                 });
             };
+            //?}
             BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
             try {
                 for (int by = Math.max(y, layerMin); by < Math.min(y + SECTION, layerMax + 1); by++) {
@@ -515,7 +616,10 @@ public final class BakedSchematic implements AutoCloseable {
                         for (int bx = x; bx < Math.min(x + SECTION, schematic.width()); bx++) {
                             cursor.set(bx, by, bz);
                             BlockState state = view.getBlockState(cursor);
-                            if (state.isAir() || state.getRenderShape() == RenderShape.INVISIBLE) continue;
+                            if (state.isAir()) continue;
+                            // Signs, banners, heads and pots have no model at all, only a block
+                            // entity renderer, so invisible is skipped only where no stand-in is.
+                            if (state.getRenderShape() == RenderShape.INVISIBLE && !EntityBlockStandIn.covers(state)) continue;
                             var model = dispatcher.getBlockModel(state);
                             pose.pushPose();
                             pose.translate(bx - x, by - y, bz - z);
@@ -544,8 +648,12 @@ public final class BakedSchematic implements AutoCloseable {
                     if (mesh.buffer != null) sheets.add(mesh);
                 }
             } catch (Exception e) {
+                //? if >=1.21 {
+                /*abandon(sheetBuilders.keySet());
+                *///?} else {
                 if (builder.building()) builder.end().release();
                 for (BufferBuilder b : sheetBuilders.values()) if (b.building()) b.end().release();
+                //?}
                 throw e;
             }
         }

@@ -1,6 +1,8 @@
 package dev.willtda.simpleschematics.printing;
 
 import dev.willtda.simpleschematics.SimpleSchematics;
+import dev.willtda.simpleschematics.mixin.BlockItemInvoker;
+import dev.willtda.simpleschematics.platform.Platform;
 import dev.willtda.simpleschematics.render.SchematicVerifier;
 import dev.willtda.simpleschematics.resource.MaterialResolver;
 import net.minecraft.client.Minecraft;
@@ -36,10 +38,8 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
-import net.minecraftforge.fml.util.ObfuscationReflectionHelper;
 
 import javax.annotation.Nullable;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -55,11 +55,6 @@ public final class PrintPlacement {
             BlockStateProperties.EGGS, BlockStateProperties.LAYERS);
     private static final double[] HIT_OFFSETS = {0.5, 0.25, 0.75};
     private static final Set<Class<?>> FAILED_ITEMS = new HashSet<>();
-    // Resolving the protected hook needs Forge's mapping service, unlike state comparisons.
-    private static final class PlacementAccess {
-        private static final Method METHOD = ObfuscationReflectionHelper.findMethod(
-                BlockItem.class, "m_5965_", BlockPlaceContext.class);
-    }
 
     private PrintPlacement() {
     }
@@ -82,11 +77,11 @@ public final class PrintPlacement {
             return null;
         }
         // An item carrying inventory NBT must never unpack its contents in Survival.
-        if (!mc.player.isCreative() && stack.getTagElement(BlockItem.BLOCK_ENTITY_TAG) != null) {
+        if (!mc.player.isCreative() && PrintInventory.carriesBlockEntity(stack)) {
             return null;
         }
         // A tagged state can overwrite the state predicted by the item's placement rules.
-        if (stack.getTagElement(BlockItem.BLOCK_STATE_TAG) != null) {
+        if (PrintInventory.carriesState(stack)) {
             return null;
         }
         if (wanted.getBlock() instanceof FallingBlock
@@ -129,7 +124,7 @@ public final class PrintPlacement {
                     try {
                         BlockPlaceContext updated = item.updatePlacementContext(context);
                         if (updated == null || !updated.getClickedPos().equals(pos)) continue;
-                        BlockState predicted = (BlockState) PlacementAccess.METHOD.invoke(item, updated);
+                        BlockState predicted = ((BlockItemInvoker) item).simpleschematics$placementState(updated);
                         if (predicted == null || predicted.equals(actual)
                                 || !(matches(wanted, predicted) || isPartial(wanted, predicted))
                                 || !predicted.canSurvive(mc.level, pos)
@@ -138,7 +133,7 @@ public final class PrintPlacement {
                             continue;
                         }
                         return new Attempt(hit, yaw, pitch, sneak);
-                    } catch (ReflectiveOperationException | RuntimeException exception) {
+                    } catch (RuntimeException exception) {
                         if (FAILED_ITEMS.add(item.getClass())) {
                             SimpleSchematics.LOG.warn("Cannot predict print placement for {}", item, exception);
                         }
@@ -162,7 +157,7 @@ public final class PrintPlacement {
 
     /** Whether the existing block can be completed without mining it. */
     public static boolean isPartial(BlockState wanted, BlockState actual) {
-        if (wanted.getBlock() instanceof FlowerPotBlock pot && pot.getContent() != Blocks.AIR) {
+        if (wanted.getBlock() instanceof FlowerPotBlock pot && MaterialResolver.plantIn(pot) != Blocks.AIR) {
             return actual.is(Blocks.FLOWER_POT);
         }
         if (wanted.getBlock() instanceof CandleCakeBlock) {
@@ -204,7 +199,7 @@ public final class PrintPlacement {
 
     private static boolean isCompositeUse(BlockState wanted, BlockState actual, ItemStack stack) {
         if (wanted.getBlock() instanceof FlowerPotBlock pot && actual.is(Blocks.FLOWER_POT)) {
-            return stack.is(pot.getContent().asItem());
+            return stack.is(MaterialResolver.plantIn(pot).asItem());
         }
         if (wanted.getBlock() instanceof CandleCakeBlock && actual.is(Blocks.CAKE)
                 && actual.getValue(CakeBlock.BITES) == 0 && stack.getItem() instanceof BlockItem item) {
@@ -270,7 +265,7 @@ public final class PrintPlacement {
         if (shape.isEmpty()) return;
         AABB bounds = shape.bounds();
         Vec3 eye = mc.player.getEyePosition();
-        double reach = mc.player.getBlockReach();
+        double reach = Platform.blockReach(mc.player);
         for (double first : HIT_OFFSETS) {
             for (double second : HIT_OFFSETS) {
                 double x = face.getAxis() == Direction.Axis.X

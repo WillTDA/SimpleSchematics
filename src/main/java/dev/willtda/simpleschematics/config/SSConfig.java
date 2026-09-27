@@ -3,123 +3,125 @@ package dev.willtda.simpleschematics.config;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraftforge.common.ForgeConfigSpec;
-import org.apache.commons.lang3.tuple.Pair;
 
 /**
- * Every setting the mod exposes. Backed by a standard Forge config spec so the
- * values survive restarts on their own, and surfaced through
- * {@link ConfigScreen} from the Mods list.
+ * Every setting the mod exposes. Stored in the mod's own {@link ConfigFile},
+ * which reads and writes the same file Forge's config spec used to, and
+ * surfaced through {@link ConfigScreen} from the Mods list.
  */
 public final class SSConfig {
 
     public static final SSConfig INSTANCE;
-    public static final ForgeConfigSpec SPEC;
+    /** Where the values are read from and written to. The platform points it at the file on startup. */
+    public static final ConfigFile FILE;
+    /** The file name Forge's config spec used, kept so existing settings carry over. */
+    public static final String FILE_NAME = "simpleschematics-client.toml";
 
     static {
-        Pair<SSConfig, ForgeConfigSpec> pair = new ForgeConfigSpec.Builder().configure(SSConfig::new);
-        INSTANCE = pair.getLeft();
-        SPEC = pair.getRight();
+        ConfigFile.Builder builder = new ConfigFile.Builder();
+        INSTANCE = new SSConfig(builder);
+        FILE = builder.build();
     }
 
     // ---- general ----------------------------------------------------------
-    public final ForgeConfigSpec.ConfigValue<String> toolItem;
-    public final ForgeConfigSpec.BooleanValue enabledOnLaunch;
-    public final ForgeConfigSpec.BooleanValue toolRequiredForHotkeys;
-    public final ForgeConfigSpec.BooleanValue actionBarFeedback;
-    public final ForgeConfigSpec.BooleanValue invertScroll;
-    public final ForgeConfigSpec.BooleanValue menuKeyBlocksOtherMods;
-    public final ForgeConfigSpec.IntValue maxSelectionReach;
-    public final ForgeConfigSpec.ConfigValue<String> dataDirectory;
+    public final ConfigFile.StringValue toolItem;
+    public final ConfigFile.BooleanValue enabledOnLaunch;
+    public final ConfigFile.BooleanValue toolRequiredForHotkeys;
+    public final ConfigFile.BooleanValue actionBarFeedback;
+    public final ConfigFile.BooleanValue invertScroll;
+    public final ConfigFile.BooleanValue menuKeyBlocksOtherMods;
+    public final ConfigFile.IntValue maxSelectionReach;
+    public final ConfigFile.StringValue dataDirectory;
     /** Remembered rather than chosen, so the mod comes back the way you left it. */
-    public final ForgeConfigSpec.ConfigValue<String> lastMode;
+    public final ConfigFile.StringValue lastMode;
 
     // ---- scan -------------------------------------------------------------
-    public final ForgeConfigSpec.ConfigValue<String> startCornerColour;
-    public final ForgeConfigSpec.ConfigValue<String> endCornerColour;
-    public final ForgeConfigSpec.ConfigValue<String> selectionBoxColour;
-    public final ForgeConfigSpec.DoubleValue selectionFillOpacity;
-    public final ForgeConfigSpec.BooleanValue showTargetBlockOutline;
-    public final ForgeConfigSpec.BooleanValue swapScanCorners;
-    public final ForgeConfigSpec.BooleanValue saveEntitiesByDefault;
-    public final ForgeConfigSpec.BooleanValue saveContainerContentsByDefault;
+    public final ConfigFile.StringValue startCornerColour;
+    public final ConfigFile.StringValue endCornerColour;
+    public final ConfigFile.StringValue selectionBoxColour;
+    public final ConfigFile.DoubleValue selectionFillOpacity;
+    public final ConfigFile.BooleanValue showTargetBlockOutline;
+    public final ConfigFile.BooleanValue swapScanCorners;
+    public final ConfigFile.BooleanValue saveEntitiesByDefault;
+    public final ConfigFile.BooleanValue saveContainerContentsByDefault;
 
     // ---- build / hologram -------------------------------------------------
-    public final ForgeConfigSpec.BooleanValue renderHolograms;
-    public final ForgeConfigSpec.DoubleValue hologramOpacity;
-    public final ForgeConfigSpec.BooleanValue hologramOutline;
-    public final ForgeConfigSpec.BooleanValue hologramBlockOutline;
-    public final ForgeConfigSpec.ConfigValue<String> hologramBlockOutlineColour;
-    public final ForgeConfigSpec.DoubleValue hologramBlockOutlineOpacity;
-    public final ForgeConfigSpec.IntValue hologramBlockOutlineDistance;
-    public final ForgeConfigSpec.BooleanValue hologramNearFade;
-    public final ForgeConfigSpec.DoubleValue hologramFadeDistance;
-    public final ForgeConfigSpec.BooleanValue hologramBreathe;
-    public final ForgeConfigSpec.DoubleValue hologramBreatheDepth;
-    public final ForgeConfigSpec.DoubleValue hologramBreathePeriod;
-    public final ForgeConfigSpec.BooleanValue highlightMismatches;
-    public final ForgeConfigSpec.IntValue hologramRenderDistance;
-    public final ForgeConfigSpec.BooleanValue highlightExtraBlocks;
-    public final ForgeConfigSpec.BooleanValue hideCorrectBlocks;
-    public final ForgeConfigSpec.BooleanValue strictStateMatch;
-    public final ForgeConfigSpec.ConfigValue<String> mismatchColour;
-    public final ForgeConfigSpec.ConfigValue<String> extraBlockColour;
-    public final ForgeConfigSpec.DoubleValue highlightFillOpacity;
-    public final ForgeConfigSpec.IntValue maxHighlights;
-    public final ForgeConfigSpec.IntValue verifyBlocksPerTick;
-    public final ForgeConfigSpec.IntValue maxPreviewBlocks;
-    public final ForgeConfigSpec.BooleanValue layerScrollSound;
-    public final ForgeConfigSpec.DoubleValue layerScrollVolume;
-    public final ForgeConfigSpec.BooleanValue snapPlacementToGrid;
-    public final ForgeConfigSpec.EnumValue<dev.willtda.simpleschematics.render.ShaderPackCompat.Mode> shaderPackCompat;
-    public final ForgeConfigSpec.BooleanValue autoSelectLookedAt;
+    public final ConfigFile.BooleanValue renderHolograms;
+    public final ConfigFile.DoubleValue hologramOpacity;
+    public final ConfigFile.BooleanValue hologramOutline;
+    public final ConfigFile.BooleanValue hologramBlockOutline;
+    public final ConfigFile.StringValue hologramBlockOutlineColour;
+    public final ConfigFile.DoubleValue hologramBlockOutlineOpacity;
+    public final ConfigFile.IntValue hologramBlockOutlineDistance;
+    public final ConfigFile.BooleanValue hologramNearFade;
+    public final ConfigFile.DoubleValue hologramFadeDistance;
+    public final ConfigFile.BooleanValue hologramBreathe;
+    public final ConfigFile.DoubleValue hologramBreatheDepth;
+    public final ConfigFile.DoubleValue hologramBreathePeriod;
+    public final ConfigFile.BooleanValue highlightMismatches;
+    public final ConfigFile.IntValue hologramRenderDistance;
+    public final ConfigFile.BooleanValue highlightExtraBlocks;
+    public final ConfigFile.BooleanValue hideCorrectBlocks;
+    public final ConfigFile.BooleanValue strictStateMatch;
+    public final ConfigFile.StringValue mismatchColour;
+    public final ConfigFile.StringValue extraBlockColour;
+    public final ConfigFile.DoubleValue highlightFillOpacity;
+    public final ConfigFile.IntValue maxHighlights;
+    public final ConfigFile.IntValue verifyBlocksPerTick;
+    public final ConfigFile.IntValue maxPreviewBlocks;
+    public final ConfigFile.BooleanValue layerScrollSound;
+    public final ConfigFile.DoubleValue layerScrollVolume;
+    public final ConfigFile.BooleanValue snapPlacementToGrid;
+    public final ConfigFile.EnumValue<dev.willtda.simpleschematics.render.ShaderPackCompat.Mode> shaderPackCompat;
+    public final ConfigFile.BooleanValue autoSelectLookedAt;
 
     // ---- print ------------------------------------------------------------
-    public final ForgeConfigSpec.EnumValue<PrintSource> printSource;
-    public final ForgeConfigSpec.IntValue printDelay;
-    public final ForgeConfigSpec.BooleanValue printSounds;
-    public final ForgeConfigSpec.BooleanValue printParticles;
-    public final ForgeConfigSpec.BooleanValue printWarnSurvival;
-    public final ForgeConfigSpec.BooleanValue printWarnMissing;
-    public final ForgeConfigSpec.BooleanValue printReplaceBlocks;
-    public final ForgeConfigSpec.BooleanValue printEntities;
-    public final ForgeConfigSpec.BooleanValue printContents;
+    public final ConfigFile.EnumValue<PrintSource> printSource;
+    public final ConfigFile.IntValue printDelay;
+    public final ConfigFile.BooleanValue printInstant;
+    public final ConfigFile.BooleanValue printSounds;
+    public final ConfigFile.BooleanValue printParticles;
+    public final ConfigFile.BooleanValue printWarnSurvival;
+    public final ConfigFile.BooleanValue printWarnMissing;
+    public final ConfigFile.BooleanValue printReplaceBlocks;
+    public final ConfigFile.BooleanValue printEntities;
+    public final ConfigFile.BooleanValue printContents;
 
     public enum PrintSource {
         INVENTORY, LINKED_CHESTS, BOTH
     }
 
     // ---- resource list ----------------------------------------------------
-    public final ForgeConfigSpec.BooleanValue resourceListVisible;
-    public final ForgeConfigSpec.BooleanValue resourceListEnabled;
-    public final ForgeConfigSpec.EnumValue<Anchor> resourceListAnchor;
-    public final ForgeConfigSpec.IntValue resourceListOffsetX;
-    public final ForgeConfigSpec.IntValue resourceListOffsetY;
-    public final ForgeConfigSpec.DoubleValue resourceListScale;
-    public final ForgeConfigSpec.IntValue resourceListMaxWidth;
-    public final ForgeConfigSpec.IntValue resourceListMaxRows;
-    public final ForgeConfigSpec.DoubleValue resourceListBackgroundOpacity;
-    public final ForgeConfigSpec.BooleanValue removeCollectedItems;
-    public final ForgeConfigSpec.BooleanValue countOpenContainers;
-    public final ForgeConfigSpec.BooleanValue countEnderChest;
-    public final ForgeConfigSpec.BooleanValue showStackBreakdown;
-    public final ForgeConfigSpec.BooleanValue hideCompletedRows;
-    public final ForgeConfigSpec.BooleanValue countPlacedBlocks;
-    public final ForgeConfigSpec.BooleanValue showBuildName;
+    public final ConfigFile.BooleanValue resourceListVisible;
+    public final ConfigFile.BooleanValue resourceListEnabled;
+    public final ConfigFile.EnumValue<Anchor> resourceListAnchor;
+    public final ConfigFile.IntValue resourceListOffsetX;
+    public final ConfigFile.IntValue resourceListOffsetY;
+    public final ConfigFile.DoubleValue resourceListScale;
+    public final ConfigFile.IntValue resourceListMaxWidth;
+    public final ConfigFile.IntValue resourceListMaxRows;
+    public final ConfigFile.DoubleValue resourceListBackgroundOpacity;
+    public final ConfigFile.BooleanValue removeCollectedItems;
+    public final ConfigFile.BooleanValue countOpenContainers;
+    public final ConfigFile.BooleanValue countEnderChest;
+    public final ConfigFile.BooleanValue showStackBreakdown;
+    public final ConfigFile.BooleanValue hideCompletedRows;
+    public final ConfigFile.BooleanValue countPlacedBlocks;
+    public final ConfigFile.BooleanValue showBuildName;
 
     // ---- build list -------------------------------------------------------
-    public final ForgeConfigSpec.BooleanValue buildListVisible;
-    public final ForgeConfigSpec.BooleanValue buildListEnabled;
-    public final ForgeConfigSpec.EnumValue<Anchor> buildListAnchor;
-    public final ForgeConfigSpec.IntValue buildListOffsetX;
-    public final ForgeConfigSpec.IntValue buildListOffsetY;
-    public final ForgeConfigSpec.IntValue buildListMaxRows;
+    public final ConfigFile.BooleanValue buildListVisible;
+    public final ConfigFile.BooleanValue buildListEnabled;
+    public final ConfigFile.EnumValue<Anchor> buildListAnchor;
+    public final ConfigFile.IntValue buildListOffsetX;
+    public final ConfigFile.IntValue buildListOffsetY;
+    public final ConfigFile.IntValue buildListMaxRows;
 
     public enum Anchor {
         TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT
     }
 
-    private SSConfig(ForgeConfigSpec.Builder b) {
+    private SSConfig(ConfigFile.Builder b) {
         b.comment("General behaviour").push("general");
         toolItem = b.comment("The item you hold to use Simple Schematics. Use a registry id, for example minecraft:stick")
                 .define("toolItem", "minecraft:stick");
@@ -233,6 +235,9 @@ public final class SSConfig {
                 .defineEnum("printSource", PrintSource.BOTH);
         printDelay = b.comment("Ticks between Survival block placements. Twenty ticks is one second")
                 .defineInRange("printDelay", 4, 1, 40);
+        printInstant = b.comment("Paste Creative builds as fast as the server accepts commands instead of at a steady pace.",
+                        "Needs operator permission, or cheats in singleplayer")
+                .define("printInstant", false);
         printSounds = b.comment("Play each block's placement sound while printing")
                 .define("printSounds", true);
         printParticles = b.comment("Show a small burst of particles at each printed block")
