@@ -3,6 +3,7 @@ package dev.willtda.simpleschematics.config;
 import dev.willtda.simpleschematics.SimpleSchematics;
 import dev.willtda.simpleschematics.client.ClientState;
 import dev.willtda.simpleschematics.client.Feedback;
+import dev.willtda.simpleschematics.gui.Screens;
 import dev.willtda.simpleschematics.render.SchematicVerifier;
 import dev.willtda.simpleschematics.render.ShaderPackCompat;
 import dev.willtda.simpleschematics.render.WorldRenderer;
@@ -457,7 +458,7 @@ public final class ConfigScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderBackground(graphics);
+        Screens.background(this, graphics, mouseX, mouseY, partialTick);
         scroll = Mth.clamp(scroll, 0, maxScroll());
 
         int top = listTop();
@@ -501,7 +502,7 @@ public final class ConfigScreen extends Screen {
         }
         graphics.disableScissor();
 
-        super.render(graphics, mouseX, mouseY, partialTick);
+        Screens.widgets(this, graphics, mouseX, mouseY, partialTick);
 
         if (maxScroll() > 0) {
             int trackHeight = bottom - top;
@@ -517,8 +518,13 @@ public final class ConfigScreen extends Screen {
     }
 
     @Override
+    //? if >=1.21 {
+    /*public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double delta) {
+        if (super.mouseScrolled(mouseX, mouseY, scrollX, delta)) {
+    *///?} else {
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
         if (super.mouseScrolled(mouseX, mouseY, delta)) {
+    //?}
             return true;
         }
         scroll -= (int) (delta * ROW_HEIGHT);

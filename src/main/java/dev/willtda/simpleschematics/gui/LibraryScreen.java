@@ -337,7 +337,7 @@ public final class LibraryScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderBackground(graphics);
+        Screens.background(this, graphics, mouseX, mouseY, partialTick);
         updateActionButtons();
         graphics.drawString(this.font, this.title, margin(), titleY(), 0xFFFFFFFF, false);
 
@@ -347,7 +347,7 @@ public final class LibraryScreen extends Screen {
             renderPlacements(graphics, mouseX, mouseY);
         }
 
-        super.render(graphics, mouseX, mouseY, partialTick);
+        Screens.widgets(this, graphics, mouseX, mouseY, partialTick);
     }
 
     private void renderLibrary(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
@@ -622,7 +622,11 @@ public final class LibraryScreen extends Screen {
     }
 
     @Override
+    //? if >=1.21 {
+    /*public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double delta) {
+    *///?} else {
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+    //?}
         if (tab == Tab.LIBRARY && preview != null && preview.contains(mouseX, mouseY)) {
             preview.zoom((float) delta);
             return true;
@@ -631,7 +635,11 @@ public final class LibraryScreen extends Screen {
             scroll -= (int) Math.signum(delta);
             return true;
         }
+        //? if >=1.21 {
+        /*return super.mouseScrolled(mouseX, mouseY, scrollX, delta);
+        *///?} else {
         return super.mouseScrolled(mouseX, mouseY, delta);
+        //?}
     }
 
     @Override

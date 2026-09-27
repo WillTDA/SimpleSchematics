@@ -76,7 +76,11 @@ public final class ScanManager {
 
                     BlockEntity be = level.getBlockEntity(cursor);
                     if (be != null) {
+                        //? if >=1.21 {
+                        /*CompoundTag tag = be.saveWithId(level.registryAccess());
+                        *///?} else {
                         CompoundTag tag = be.saveWithId();
+                        //?}
                         tag.remove("x");
                         tag.remove("y");
                         tag.remove("z");
@@ -130,6 +134,10 @@ public final class ScanManager {
         tag.remove("RecordItem");
         tag.remove("Book");
         tag.remove("Bees");
+        //? if >=1.21 {
+        /*tag.remove("bees");
+        tag.remove("item");
+        *///?}
         tag.remove("LootTable");
         tag.remove("LootTableSeed");
     }

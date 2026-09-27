@@ -131,6 +131,29 @@ Minecraft version, not copies side by side.
   errors. 132 are in the three `platform` files, which get a NeoForge sibling rather than
   edits. Of the other 206, 138 are the renderer, `EntityBlockStandIn` (88) and
   `BakedSchematic` (50); every other file has a handful.
+- **Phase 4, NeoForge 1.21.1, is done** (27 September 2026). The `1.21.1-neoforge` node builds
+  beside `1.20.1-forge` from the same `src/`, with about fifty Stonecutter conditions in all:
+  the renderer's buffer handling and vertex calls (`BakedSchematic`, `EntityBlockStandIn`,
+  `WorldRenderer`), the Creative paste's carrier path and 1.21 key names, and a handful of
+  small ones, most of them inside helpers (`util/Ids`, `gui/Screens`,
+  `MaterialResolver.plantIn`, `PrintInventory.carriesState`). The NeoForge listener,
+  `platform/neoforge/NeoForgeClient`, mirrors the Forge one event for event. Schematics carry
+  their data version and are brought up to the running game through its own data fixers,
+  so a 1.20.1 schematic pastes on 1.21.1 with its items in the new layout.
+- **Checked in a NeoForge dev client**: the M key, use click, scroll and chat through
+  NeoForge's own hooks; every screen drawn over 1.21's blurred backdrop; a scan of chests,
+  signs, a patterned banner, a player head, a decorated pot with sherds, a bed, a shulker
+  box, a conduit, a hanging sign, a beehive, a painting and an item frame, pasted in Creative
+  with every block and block entity identical; a 1.20.1-format schematic upgraded and
+  pasted with its named items intact; a Survival print; and the holograms and library
+  preview on screen. The shader pack path is not checked, since Iris was not available.
+- **Found on the way, and fixed on both nodes**: signs, banners, heads and decorated pots
+  had no ghost at all, because the bake skipped every block with an invisible render shape
+  before the stand-ins were asked. The paste also counted text as not copied when the
+  server wrote the same JSON another way.
+- **The renderer stays one file per class.** At 1.21.1 the difference is who owns the buffer
+  memory and the names of the vertex calls, which conditions carry without crowding the
+  code. The split by era waits for 1.21.5's render pipelines, where the change is wholesale.
 
 ## Phases
 

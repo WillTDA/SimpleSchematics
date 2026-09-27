@@ -60,7 +60,7 @@ public final class PrintConfirmScreen extends Screen {
             Component label = Component.translatable("simpleschematics.print.dont_ask");
             int boxWidth = Math.min(layout.textWidth(), 24 + this.font.width(label));
             boolean was = silence != null && silence.selected();
-            silence = new Checkbox((this.width - boxWidth) / 2, layout.checkboxY(), boxWidth,
+            silence = Screens.checkbox(this.font, (this.width - boxWidth) / 2, layout.checkboxY(), boxWidth,
                     PrintConfirmLayout.BUTTON_HEIGHT, label, was);
             silence.setTooltip(Tooltip.create(Component.translatable("simpleschematics.tip.print.dont_ask")));
             addRenderableWidget(silence);
@@ -85,7 +85,7 @@ public final class PrintConfirmScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderBackground(graphics);
+        Screens.background(this, graphics, mouseX, mouseY, partialTick);
         graphics.drawCenteredString(this.font, this.title, this.width / 2, layout.titleY(), 0xFFFFFFFF);
         int y = layout.notesY();
         for (int i = 0; i < layout.visibleLines(); i++) {
@@ -97,7 +97,7 @@ public final class PrintConfirmScreen extends Screen {
             }
             y += PrintConfirmLayout.LINE;
         }
-        super.render(graphics, mouseX, mouseY, partialTick);
+        Screens.widgets(this, graphics, mouseX, mouseY, partialTick);
     }
 
     @Override

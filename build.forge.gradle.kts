@@ -17,7 +17,8 @@ val forgeRelease = property("deps.forge") as String
 
 version = property("mod.version") as String
 group = property("mod.group") as String
-base.archivesName = modId
+// Every node's jar lands in dist/, so the name says which game and loader it is for.
+base.archivesName = "$modId-forge-$mcVersion"
 
 java {
     toolchain.languageVersion = JavaLanguageVersion.of(17)
@@ -74,11 +75,14 @@ tasks.processResources {
         "mod_licence" to modLicence,
         "forge_version" to forgeRelease,
         "minecraft_version" to mcVersion,
+        "pack_format" to "15",
+        "mixin_java" to "JAVA_17",
     )
     inputs.properties(replacements)
-    filesMatching(listOf("META-INF/mods.toml", "pack.mcmeta")) {
+    filesMatching(listOf("META-INF/mods.toml", "pack.mcmeta", "$modId.mixins.json")) {
         expand(replacements)
     }
+    exclude("META-INF/neoforge.mods.toml")
 }
 
 tasks.jar {

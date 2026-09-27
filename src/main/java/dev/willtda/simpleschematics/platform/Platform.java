@@ -3,8 +3,13 @@ package dev.willtda.simpleschematics.platform;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.world.entity.player.Player;
+//? if forge {
 import net.minecraftforge.client.settings.KeyConflictContext;
 import net.minecraftforge.fml.loading.FMLPaths;
+//?} else {
+/*import net.neoforged.fml.loading.FMLPaths;
+import net.neoforged.neoforge.client.settings.KeyConflictContext;
+*///?}
 
 import java.nio.file.Path;
 
@@ -37,6 +42,10 @@ public final class Platform {
 
     /** How far the player can reach to place or use a block. */
     public static double blockReach(Player player) {
+        //? if >=1.21 {
+        /*return player.blockInteractionRange();
+        *///?} else {
         return player.getBlockReach();
+        //?}
     }
 }

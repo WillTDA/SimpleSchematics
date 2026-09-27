@@ -1,12 +1,12 @@
 package dev.willtda.simpleschematics.client;
 
 import dev.willtda.simpleschematics.config.SSConfig;
+import dev.willtda.simpleschematics.util.Ids;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 
@@ -102,7 +102,7 @@ public final class Feedback {
         if (mc.player == null) {
             return;
         }
-        SoundEvent sound = BuiltInRegistries.SOUND_EVENT.get(new ResourceLocation("minecraft", "block.note_block.hat"));
+        SoundEvent sound = BuiltInRegistries.SOUND_EVENT.get(Ids.of("minecraft", "block.note_block.hat"));
         if (sound == null) {
             return;
         }

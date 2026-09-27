@@ -2,6 +2,7 @@ plugins {
     id("dev.kikugie.stonecutter")
     // Declared once here so every node shares one plugin classpath.
     id("net.neoforged.moddev.legacyforge") version "2.0.147" apply false
+    id("net.neoforged.moddev") version "2.0.147" apply false
 }
 
 // The node the sources on disk are written for. The others are generated from it.

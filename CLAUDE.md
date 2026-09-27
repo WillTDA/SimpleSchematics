@@ -1,7 +1,7 @@
 # Simple Schematics
 
-Client-side schematic mod for **Minecraft Forge 1.20.1**, Java 17, package
-`dev.willtda.simpleschematics`. Not a git repository at time of writing.
+Client-side schematic mod for **Forge 1.20.1** (Java 17) and **NeoForge 1.21.1** (Java 21),
+built from one source tree, package `dev.willtda.simpleschematics`.
 
 Read `README.md` for what the mod does and how it is used. This file is for the things
 that are not obvious from the code, and the traps that have already cost time.
@@ -16,24 +16,39 @@ default attribution instruction.
 ## Build and run
 
 ```bash
-./gradlew build                        # every node; the Forge jar lands in versions/1.20.1-forge/build/libs/
-./gradlew :1.20.1-forge:compileJava    # fast check while iterating
-./gradlew :1.20.1-forge:runClient      # launches the dev client, working dir is run/
+./gradlew build                           # every node; each jar lands in versions/<node>/build/libs/
+./gradlew :1.20.1-forge:compileJava       # fast check while iterating
+./gradlew :1.21.1-neoforge:compileJava
+./gradlew :1.20.1-forge:runClient         # the Forge dev client, working dir run/
+./gradlew :1.21.1-neoforge:runClient      # the NeoForge dev client, working dir run/neoforge/
+./gradlew dist                            # every node's jar, copied into dist/
 ```
 
 Add `--offline` when dependencies are already cached; it is noticeably faster.
 
 **Gradle runs on Java 21**, because Stonecutter needs it; each node compiles with its own
-toolchain (Java 17 for Forge 1.20.1). ModDevGradle Legacy builds the Forge node and
-reobfuscates the jar to SRG: `build/libs/` holds the reobfuscated jar, `build/devlibs/`
-the Mojang-named one that only runs in development.
+toolchain (Java 17 for Forge 1.20.1, Java 21 for NeoForge 1.21.1). ModDevGradle Legacy builds
+the Forge node and reobfuscates the jar to SRG: `build/libs/` holds the reobfuscated jar,
+`build/devlibs/` the Mojang-named one that only runs in development. ModDevGradle builds the
+NeoForge node, which runs on Mojang's names and has no reobfuscation step.
 
 **Stonecutter builds `src/` once per node** (`versions/<version>-<loader>/`, one Minecraft
 version and loader each), from `settings.gradle.kts`, `stonecutter.gradle.kts` and
-`build.<loader>.gradle.kts`. Code that differs between nodes is marked with comments such
-as `//? if neoforge {`. The files on disk are written for the active node,
+`build.<loader>.gradle.kts`. Code that differs between nodes is marked with comments:
+`//? if neoforge {` for a loader, `//? if >=1.21 {` for a game version, each closed by
+`//?}` with an optional `//?} else {` between. A file for one loader only is wrapped whole,
+after its package line. The files on disk are written for the active node,
 `1.20.1-forge`; run the **Reset active project** task before committing if you have
 switched. `docs/porting-plan.md` holds the plan and the decisions behind it.
+
+- **Write both sides of a condition as plain code, then run `Set active project to <node>`
+  for the node already active.** Stonecutter comments out whichever side does not apply
+  and escapes any block comments inside it, which is far less error prone than writing the
+  commented side by hand.
+- **Prefer one small helper with the condition inside over conditions at every call site**:
+  `util/Ids` for resource locations, `gui/Screens` for backgrounds, widgets and checkboxes,
+  `MaterialResolver.plantIn`, `PrintInventory.carriesState`. A condition that repeats is a
+  helper waiting to be written.
 
 **Kotlin build scripts resolve names against the nearest receiver first.** Inside
 `legacyForge { }` or a task block, a script value named like one of the block's own
@@ -42,9 +57,12 @@ block, not the script. Read properties at the top of the script into distinctly 
 values.
 
 Mod metadata lives in `stonecutter.properties.toml` (loader and version specific values
-in their `[loader."version"]` sections) and is interpolated into
-`src/main/resources/META-INF/mods.toml` at build time. Do not hardcode the version or
-mod id in the toml. `gradle.properties` only holds Gradle's own options.
+in their `[loader."version"]` sections) and is interpolated at build time into
+`META-INF/mods.toml` for Forge and `META-INF/neoforge.mods.toml` for NeoForge; each node's
+jar leaves the other file out. Do not hardcode the version or mod id in either toml.
+`pack.mcmeta` and `simpleschematics.mixins.json` are templates too (pack format, mixin
+Java level), and the NeoForge jar drops the mixins' refmap line, since it has no SRG names
+to map. `gradle.properties` only holds Gradle's own options.
 
 **Only one dev client can run at a time.** The second one fails to take
 `run/logs/latest.log` and its output is useless. Before launching, check whether one is
@@ -52,7 +70,9 @@ already running; if a log line is timestamped ahead of your launch, it belongs t
 someone else's session. Kill your own launch rather than leaving two clients up.
 
 Useful paths: `run/logs/latest.log`, `run/crash-reports/`, `run/config/simpleschematics-client.toml`,
-`run/simpleschematics/` (schematics, placements, resource lists).
+`run/simpleschematics/` (schematics, placements, resource lists). The NeoForge client has the
+same layout under `run/neoforge/`, kept apart so a newer game never upgrades the Forge
+client's worlds in place.
 
 ## Layout
 
@@ -77,14 +97,22 @@ Gradle build. `:1.20.1-forge:writePrintTestClasspath` writes the classpath they 
 Shared code imports nothing from a loader. What it needs from one goes through
 `platform/Platform` (game and config folders, in-game key mappings, block reach), and every
 event and registration lives in one listener class per loader, `platform/forge/ForgeClient`
-today, which only calls through to shared methods such as `InputHandler.onKey`,
-`InputHandler.onInteraction` (returns true to take the click), `WorldRenderer.render`,
-`PrintChat.shouldHide` and the `SimpleSchematicsClient` lifecycle hooks. Add a behaviour
-to the shared method, never to the listener.
+and `platform/neoforge/NeoForgeClient`, which only call through to shared methods such as
+`InputHandler.onKey`, `InputHandler.onInteraction` (returns true to take the click),
+`WorldRenderer.render`, `PrintChat.shouldHide` and the `SimpleSchematicsClient` lifecycle
+hooks. Add a behaviour to the shared method, never to a listener, and keep the two
+listeners event for event alike.
 
-- **Two Forge-family imports stay in shared code on purpose**: `ModelData` and the
+- **One Forge-family import stays in shared code on purpose**: `ModelData` and the
   `getRenderTypes`/`tesselateBlock` overloads that take it, in `BakedSchematic`. NeoForge keeps
-  the same API under `net.neoforged.neoforge`, so the port swaps the package rather than the code.
+  the same API under `net.neoforged.neoforge`, so only the import is conditional.
+- **NeoForge 1.21 hands the weather stage a bare pose.** From 1.21 the camera's turn sits on
+  the render system's model view stack instead of the level's `PoseStack`. `WorldRenderer`
+  is written for the turn to be in the pose, so `NeoForgeClient.onRenderLevel` multiplies
+  the event's model view matrix into a fresh pose before calling it.
+- **The NeoForge entry is `@Mod(dist = Dist.CLIENT)`**, so on a dedicated server it is never
+  built. There is no `displayTest` on NeoForge: a client and server are matched on the
+  network channels each registers, and this mod registers none.
 - **Private vanilla members are reached through the accessors in `mixin`**, never by
   reflection on an obfuscated name. The Mixin annotation processor writes the refmap that
   turns their Mojang names into SRG for the Forge jar.
@@ -96,13 +124,15 @@ to the shared method, never to the listener.
 
 ## Rendering traps
 
-**Re-sorting a `BufferBuilder` needs a buffer far bigger than the indices.**
+**On 1.20.1, re-sorting a `BufferBuilder` needs a buffer far bigger than the indices.**
 `DrawState.vertexBufferSize()` in 1.20.1 ignores the index-only flag, so
 `VertexBuffer.upload` always slices out `vertexCount * vertexSize` bytes, and Java
 evaluates that argument eagerly. A sort buffer sized only for indices throws
 `IllegalArgumentException` from `MemoryUtil.memSlice`. Vanilla never hits this because
 chunk re-sorts borrow one of the big pooled builders. `BakedSchematic.sortCapacity`
-handles it; do not "optimise" it back down.
+handles it; do not "optimise" it back down. From 1.21 a re-sort builds only an index
+buffer from the `MeshData.SortState` kept at the bake and uploads it with
+`uploadIndexBuffer`, so the trap does not exist there.
 
 **Anything drawing 3D into a GUI must clear depth inside its scissor.** The hologram
 writes depth so its own faces occlude correctly. Left behind, that depth sits in front
@@ -120,7 +150,10 @@ per section, drawn after the block mesh with that texture bound in place of the 
 atlas (`BakedSchematic.drawSheets`). Each transform is copied from the vanilla renderer;
 change one only against the source. The hologram shader has no normal lighting, so
 `EntityBlockStandIn.Shaded` bakes the face shade into the vertex colour. A modded block
-entity still gets the particle-textured boxes.
+entity still gets the particle-textured boxes. Signs, banners, heads and pots have an
+invisible render shape rather than an animated one, and the bake skips invisible blocks,
+so each of those kinds is listed in `EntityBlockStandIn.covers`; a new stand-in for such a
+block goes there too, or it never draws.
 
 **Never walk the whole schematic volume per frame.** `BlockOutlines` precomputes the
 positions with an exposed face once per schematic and caches them. Invalidate that
@@ -130,12 +163,19 @@ that list measures each block against the camera brought into schematic space
 `BlockPos` each, and on a large build that was a garbage collection stall every few
 seconds.
 
-**Never allocate a `BufferBuilder` per bake or per re-sort.** Its memory comes from
-the native allocator and is never freed; vanilla makes a fixed handful and reuses
-them. `BakedSchematic` keeps one bake builder, one builder per texture sheet and one
-re-sort builder that only ever grows. A fresh builder per section leaked megabytes a
-frame while walking round a build, and once the driver ran short the geometry it was
-handed was garbage: the hologram stretched off to the sky until a rebake.
+**Never allocate native buffer memory per bake or per re-sort.** On 1.20.1 that is the
+`BufferBuilder` itself: its memory comes from the native allocator and is never freed,
+and vanilla makes a fixed handful and reuses them. `BakedSchematic` keeps one bake
+builder, one builder per texture sheet and one re-sort builder that only ever grows. A
+fresh builder per section leaked megabytes a frame while walking round a build, and once
+the driver ran short the geometry it was handed was garbage: the hologram stretched off
+to the sky until a rebake. From 1.21 the memory is a `ByteBufferBuilder`, kept the same
+way, and a `BufferBuilder` is a light writer over it that is made fresh for each bake.
+
+**On 1.21 a bake that fails must throw its memory away.** A `BufferBuilder` that never
+reaches `build()` leaves its bytes in the `ByteBufferBuilder`, and the next bake's mesh
+would start with them. `BakedSchematic.abandon` frees the memory the failed bake used and
+starts it afresh.
 
 **Every placement bakes on its own** (`WorldRenderer.renderKey`). The sections are
 sorted from the eye in the placement's own space, so a bake shared between two copies
@@ -145,7 +185,9 @@ of one schematic was re-sorted for one and back for the other every frame.
 `DefaultVertexFormat.BLOCK` for their own wider format inside every `BufferBuilder`
 while a pack is loaded, and fill the extra attributes themselves. Size anything from
 the uploaded `DrawState`'s format, never from `BLOCK`, and never upload index-only
-data over vertices in a different format: `Mesh.sort` checks and asks for a rebake.
+data over vertices in a different format: `Mesh.sort` checks and asks for a rebake. On
+1.21 it compares whether a pack was in use at the bake instead, since the index upload
+there never touches the format.
 The shader pack path also writes depth, unlike the mod's own path, because a pack's
 later passes read the depth buffer back and paint sky over anything that left none.
 
@@ -196,6 +238,20 @@ have no game types in them on purpose; keep it that way so they can move to a sh
   is why remote Instant paste stays at sixteen commands a tick.
 - **Command replies are dropped by translation key**, only while a paste is sending and ten
   seconds after. Add a key to `PrintChat` rather than widening the match.
+- **From 1.20.5 items carry components, not a `tag`.** The paste's payload rides in the
+  paper's `minecraft:custom_data` and is read back through the path in
+  `CreativePrinter.CARRIED`. Several block entity and entity keys went snake case at the
+  same time (`bees`, `patterns`, `profile`, `flower_pos`, `body_armor_item`); a key list
+  in the printer or the scan needs both spellings, or a version condition.
+
+## Schematic data
+
+A `.sschem` stores the `DataVersion` it was written with, and a litematic its
+`MinecraftDataVersion`. Loading one written by an older game runs its palette, block
+entities and entities through the game's own data fixers (`schematic/DataUpgrade`), the
+way an old world is upgraded, so a schematic saved on 1.20.1 pastes on 1.21.1 with its
+items in the new layout. There is no fixing downwards: a file from a newer game is read
+as it is, and anything the older game does not know comes out as air or is dropped.
 
 ## Screens
 
@@ -203,6 +259,13 @@ Every coordinate comes from layout methods computed off the live window. Nothing
 hardcoded, because at GUI scale 6 the whole screen is only a few hundred units across
 and fixed offsets overlap immediately. Rows stack from the top, buttons from the
 bottom, and the list takes what is left.
+
+**A screen draws its backdrop and widgets through `gui/Screens`, never `super.render`.**
+From 1.20.2 `Screen.render` draws the backdrop itself, over any panel drawn before it, and
+1.21 throws if the menu blur runs twice in one frame. `Screens.background`, then the
+screen's own panels, then `Screens.widgets` is the order; on 1.20.1 `widgets` is all
+`super.render` ever did. `Screens.checkbox` centres 1.21's shorter checkbox in the row the
+1.20.1 one filled, so layouts do not move between versions.
 
 The resource list and the build list are both drawn by `OverlayPanel`; neither overlay
 has drawing code of its own. The build list is registered after the resource list so

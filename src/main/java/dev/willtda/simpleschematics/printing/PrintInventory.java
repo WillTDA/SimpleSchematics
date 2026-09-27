@@ -15,7 +15,11 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.inventory.*;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+//? if >=1.21 {
+/*import net.minecraft.core.component.DataComponents;
+*///?} else {
 import net.minecraft.world.item.BlockItem;
+//?}
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.level.ClipContext;
@@ -62,8 +66,25 @@ final class PrintInventory {
     }
 
     private static boolean usable(ItemStack stack, boolean creative) {
-        return !stack.isEmpty() && stack.getTagElement(BlockItem.BLOCK_STATE_TAG) == null
-                && (creative || stack.getTagElement(BlockItem.BLOCK_ENTITY_TAG) == null);
+        return !stack.isEmpty() && !carriesState(stack) && (creative || !carriesBlockEntity(stack));
+    }
+
+    /** An item that places a fixed block state, such as a picked up bee nest full of honey. */
+    static boolean carriesState(ItemStack stack) {
+        //? if >=1.21 {
+        /*return stack.has(DataComponents.BLOCK_STATE);
+        *///?} else {
+        return stack.getTagElement(BlockItem.BLOCK_STATE_TAG) != null;
+        //?}
+    }
+
+    /** An item that places a block with contents, such as a filled chest picked with ctrl. */
+    static boolean carriesBlockEntity(ItemStack stack) {
+        //? if >=1.21 {
+        /*return stack.has(DataComponents.BLOCK_ENTITY_DATA);
+        *///?} else {
+        return stack.getTagElement(BlockItem.BLOCK_ENTITY_TAG) != null;
+        //?}
     }
 
     static ItemStack eligibleStack(Minecraft mc, Item item, boolean creative) {

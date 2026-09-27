@@ -77,11 +77,11 @@ public final class PrintPlacement {
             return null;
         }
         // An item carrying inventory NBT must never unpack its contents in Survival.
-        if (!mc.player.isCreative() && stack.getTagElement(BlockItem.BLOCK_ENTITY_TAG) != null) {
+        if (!mc.player.isCreative() && PrintInventory.carriesBlockEntity(stack)) {
             return null;
         }
         // A tagged state can overwrite the state predicted by the item's placement rules.
-        if (stack.getTagElement(BlockItem.BLOCK_STATE_TAG) != null) {
+        if (PrintInventory.carriesState(stack)) {
             return null;
         }
         if (wanted.getBlock() instanceof FallingBlock
@@ -157,7 +157,7 @@ public final class PrintPlacement {
 
     /** Whether the existing block can be completed without mining it. */
     public static boolean isPartial(BlockState wanted, BlockState actual) {
-        if (wanted.getBlock() instanceof FlowerPotBlock pot && pot.getContent() != Blocks.AIR) {
+        if (wanted.getBlock() instanceof FlowerPotBlock pot && MaterialResolver.plantIn(pot) != Blocks.AIR) {
             return actual.is(Blocks.FLOWER_POT);
         }
         if (wanted.getBlock() instanceof CandleCakeBlock) {
@@ -199,7 +199,7 @@ public final class PrintPlacement {
 
     private static boolean isCompositeUse(BlockState wanted, BlockState actual, ItemStack stack) {
         if (wanted.getBlock() instanceof FlowerPotBlock pot && actual.is(Blocks.FLOWER_POT)) {
-            return stack.is(pot.getContent().asItem());
+            return stack.is(MaterialResolver.plantIn(pot).asItem());
         }
         if (wanted.getBlock() instanceof CandleCakeBlock && actual.is(Blocks.CAKE)
                 && actual.getValue(CakeBlock.BITES) == 0 && stack.getItem() instanceof BlockItem item) {

@@ -10,10 +10,14 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
+//? if >=1.21 {
+/*import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.world.item.component.CustomData;
+*///?}
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.FloatTag;
 import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.NbtUtils;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
@@ -70,8 +74,20 @@ public final class CreativePrinter {
 
     private enum Step { NOTHING_LEFT, WAITING, SENT }
 
-    // Chat command packets in 1.20.1 reject anything longer than 256 characters.
+    // Chat command packets reject anything longer than 256 characters.
     private static final int MAX_COMMAND = 256;
+    /** Where the payload sits in the player's own data while it rides in the offhand. */
+    //? if >=1.21 {
+    /*private static final String CARRIED = "Inventory[{Slot:-106b}].components.\"minecraft:custom_data\".ss_print";
+    *///?} else {
+    private static final String CARRIED = "Inventory[{Slot:-106b}].tag.ss_print";
+    //?}
+    /** A hive's residents, renamed when 1.20.5 moved the game's data to snake case. */
+    //? if >=1.21 {
+    /*private static final String BEES = "bees";
+    *///?} else {
+    private static final String BEES = "Bees";
+    //?}
     /** The server's commandModificationBlockLimit by default. A lower limit is learnt from its reply. */
     private static final int FILL_LIMIT = 32768;
     private static final int ACK_TICKS = 100;
@@ -534,7 +550,7 @@ public final class CreativePrinter {
         tag.remove("y");
         tag.remove("z");
         if (!contents) stripContents(tag);
-        if (!entities) tag.remove("Bees");
+        if (!entities) tag.remove(BEES);
         BlockPos world = pos.immutable();
         enqueue(new Payload("block " + coordinates(world), tag, world, wanted, null, id));
     }
@@ -765,14 +781,20 @@ public final class CreativePrinter {
         }
         ItemStack previous = mc.player.getOffhandItem().copy();
         ItemStack carrier = new ItemStack(Items.PAPER);
+        //? if >=1.21 {
+        /*CompoundTag carried = new CompoundTag();
+        carried.put("ss_print", payload.tag.copy());
+        carrier.set(DataComponents.CUSTOM_DATA, CustomData.of(carried));
+        *///?} else {
         carrier.getOrCreateTag().put("ss_print", payload.tag.copy());
+        //?}
         // Packet ordering makes this one atomic data transfer followed by restoration.
         // The carrier avoids chat's 256-character ceiling for long text and inventories.
         PrintChat.expect();
         mc.gameMode.handleCreativeModeItemAdd(carrier, 45);
         try {
             mc.getConnection().sendCommand("data modify " + payload.target
-                    + " {} merge from entity @s Inventory[{Slot:-106b}].tag.ss_print");
+                    + " {} merge from entity @s " + CARRIED);
         } finally {
             mc.gameMode.handleCreativeModeItemAdd(previous, 45);
         }
@@ -785,7 +807,7 @@ public final class CreativePrinter {
         Consumer<CompoundTag> reply = actual -> {
             if (status != Status.RUNNING || pendingPayload != payload) return;
             pendingPayload = null;
-            if (actual == null || !NbtUtils.compareNbt(verificationPayload(payload.tag), actual, true)) {
+            if (actual == null || !arrived(verificationPayload(payload.tag), actual)) {
                 omitted++;
             }
             journal.record(payload.journalId, PrintJournal.Step.DONE);
@@ -796,13 +818,91 @@ public final class CreativePrinter {
         return true;
     }
 
+    /** A painting's size in blocks, or null if the variant is not known here. */
+    private static int[] paintingSize(ResourceLocation id) {
+        //? if >=1.21 {
+        /*// Paintings became data driven in 1.21, so the variants arrive from the server.
+        ClientLevel level = Minecraft.getInstance().level;
+        PaintingVariant variant = level == null ? null
+                : level.registryAccess().registryOrThrow(Registries.PAINTING_VARIANT).get(id);
+        return variant == null ? null : new int[]{variant.width(), variant.height()};
+        *///?} else {
+        PaintingVariant variant = BuiltInRegistries.PAINTING_VARIANT.get(id);
+        return variant == null ? null : new int[]{variant.getWidth() / 16, variant.getHeight() / 16};
+        //?}
+    }
+
     private static CompoundTag verificationPayload(CompoundTag tag) {
         CompoundTag expected = tag.copy();
         // These values can change during the server tick which acknowledges the copy.
         for (String key : List.of("Air", "Fire", "FallDistance", "OnGround", "PortalCooldown", "HurtTime",
                 "HurtByTimestamp", "DeathTime", "Age", "BurnTime", "CookTime", "TransferCooldown",
-                "LastUpdate", "LastUpdateTime", "TicksSincePollination", "FlowerPos", "HivePos")) expected.remove(key);
+                "LastUpdate", "LastUpdateTime", "TicksSincePollination", "FlowerPos", "HivePos",
+                "flower_pos", "hive_pos")) expected.remove(key);
         return expected;
+    }
+
+    /**
+     * {@code NbtUtils.compareNbt} in its partial form, except that two strings
+     * holding the same text match however the JSON is written. A server saves
+     * text back in its own form, so {@code {"text":"Shiny"}} returns as
+     * {@code "Shiny"}, and data fixed up from an older version is written the
+     * long way. Without this every such payload was counted as not copied.
+     */
+    private static boolean arrived(Tag expected, Tag actual) {
+        if (expected == actual || expected == null) return true;
+        if (actual == null || !expected.getClass().equals(actual.getClass())) return false;
+        if (expected instanceof StringTag want) {
+            return want.equals(actual) || sameText(want.getAsString(), actual.getAsString());
+        }
+        if (expected instanceof CompoundTag want) {
+            CompoundTag got = (CompoundTag) actual;
+            if (got.size() < want.size()) return false;
+            for (String key : want.getAllKeys()) {
+                if (!arrived(want.get(key), got.get(key))) return false;
+            }
+            return true;
+        }
+        if (expected instanceof ListTag want) {
+            ListTag got = (ListTag) actual;
+            if (want.isEmpty()) return got.isEmpty();
+            if (got.size() < want.size()) return false;
+            for (Tag element : want) {
+                boolean found = false;
+                for (Tag candidate : got) {
+                    if (arrived(element, candidate)) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) return false;
+            }
+            return true;
+        }
+        return expected.equals(actual);
+    }
+
+    private static boolean sameText(String a, String b) {
+        if (!looksLikeText(a) && !looksLikeText(b)) return false;
+        try {
+            Component left = parseText(a);
+            return left != null && left.equals(parseText(b));
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    private static boolean looksLikeText(String json) {
+        return json.startsWith("{") || json.startsWith("[") || json.startsWith("\"");
+    }
+
+    private static Component parseText(String json) {
+        //? if >=1.21 {
+        /*ClientLevel level = Minecraft.getInstance().level;
+        return level == null ? null : Component.Serializer.fromJson(json, level.registryAccess());
+        *///?} else {
+        return Component.Serializer.fromJson(json);
+        //?}
     }
     static void transformEntityData(CompoundTag tag, ResourceLocation id, Vec3 world, Mirror mirror, Rotation rotation) {
         ListTag angles = tag.getList("Rotation", Tag.TAG_FLOAT);
@@ -847,10 +947,10 @@ public final class CreativePrinter {
             double up = 0;
             if (painting) {
                 ResourceLocation variantId = ResourceLocation.tryParse(tag.getString("variant"));
-                PaintingVariant variant = variantId == null ? null : BuiltInRegistries.PAINTING_VARIANT.get(variantId);
-                if (variant != null) {
-                    across = variant.getWidth() % 32 == 0 ? 0.5 : 0;
-                    up = variant.getHeight() % 32 == 0 ? 0.5 : 0;
+                int[] size = variantId == null ? null : paintingSize(variantId);
+                if (size != null) {
+                    across = size[0] % 2 == 0 ? 0.5 : 0;
+                    up = size[1] % 2 == 0 ? 0.5 : 0;
                 }
             }
             Direction left = facing.getAxis().isHorizontal() ? facing.getCounterClockWise() : Direction.WEST;
@@ -969,8 +1069,13 @@ public final class CreativePrinter {
     }
 
     private static void stripContents(CompoundTag tag) {
-        for (String key : List.of("Items", "Inventory", "RecordItem", "Book", "Bees", "Item",
+        for (String key : List.of("Items", "Inventory", "RecordItem", "Book", BEES, "Item",
                 "HandItems", "ArmorItems", "SaddleItem", "ArmorItem", "DecorItem")) tag.remove(key);
+        //? if >=1.21 {
+        /*// A decorated pot's single item, and the armour or carpet on a horse, wolf or llama.
+        tag.remove("item");
+        tag.remove("body_armor_item");
+        *///?}
     }
 
     private static String coordinates(BlockPos pos) { return pos.getX() + " " + pos.getY() + " " + pos.getZ(); }

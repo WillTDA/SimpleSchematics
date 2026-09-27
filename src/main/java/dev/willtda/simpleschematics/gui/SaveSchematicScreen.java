@@ -56,12 +56,12 @@ public final class SaveSchematicScreen extends Screen {
         descriptionBox.setHint(Component.translatable("simpleschematics.gui.save.description_hint"));
         addRenderableWidget(descriptionBox);
 
-        entitiesBox = new Checkbox(x, y + 92, width, 20,
+        entitiesBox = Screens.checkbox(this.font, x, y + 92, width, 20,
                 Component.translatable("simpleschematics.gui.save.entities"),
                 entitiesBox != null ? entitiesBox.selected() : SSConfig.INSTANCE.saveEntitiesByDefault.get());
         addRenderableWidget(entitiesBox);
 
-        containersBox = new Checkbox(x, y + 116, width, 20,
+        containersBox = Screens.checkbox(this.font, x, y + 116, width, 20,
                 Component.translatable("simpleschematics.gui.save.containers"),
                 containersBox != null ? containersBox.selected()
                         : SSConfig.INSTANCE.saveContainerContentsByDefault.get());
@@ -116,7 +116,7 @@ public final class SaveSchematicScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderBackground(graphics);
+        Screens.background(this, graphics, mouseX, mouseY, partialTick);
 
         int width = Mth.clamp(this.width - 40, 180, 300);
         int x = (this.width - width) / 2;
@@ -145,7 +145,7 @@ public final class SaveSchematicScreen extends Screen {
                     this.width / 2, y + 202, 0xFFF87272);
         }
 
-        super.render(graphics, mouseX, mouseY, partialTick);
+        Screens.widgets(this, graphics, mouseX, mouseY, partialTick);
     }
 
     @Override

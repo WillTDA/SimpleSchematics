@@ -1,5 +1,6 @@
 package dev.willtda.simpleschematics.platform.forge;
 
+//? if forge {
 import dev.willtda.simpleschematics.SimpleSchematics;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.common.Mod;
@@ -18,3 +19,4 @@ public final class ForgeEntry {
         }
     }
 }
+//?}

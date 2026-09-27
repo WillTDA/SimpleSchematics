@@ -1,6 +1,7 @@
-package dev.willtda.simpleschematics.platform.forge;
+package dev.willtda.simpleschematics.platform.neoforge;
 
-//? if forge {
+//? if neoforge {
+/*import com.mojang.blaze3d.vertex.PoseStack;
 import dev.willtda.simpleschematics.client.InputHandler;
 import dev.willtda.simpleschematics.client.Keybinds;
 import dev.willtda.simpleschematics.client.SimpleSchematicsClient;
@@ -17,57 +18,54 @@ import dev.willtda.simpleschematics.util.Ids;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
-import net.minecraftforge.client.ConfigScreenHandler;
-import net.minecraftforge.client.event.ClientChatReceivedEvent;
-import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
-import net.minecraftforge.client.event.InputEvent;
-import net.minecraftforge.client.event.RegisterClientReloadListenersEvent;
-import net.minecraftforge.client.event.RegisterGuiOverlaysEvent;
-import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
-import net.minecraftforge.client.event.RegisterShadersEvent;
-import net.minecraftforge.client.event.RenderLevelStageEvent;
-import net.minecraftforge.client.event.sound.PlaySoundEvent;
-import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.event.entity.player.PlayerEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.ModLoadingContext;
-import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
-import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import net.neoforged.bus.api.IEventBus;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
+import net.neoforged.neoforge.client.event.ClientChatReceivedEvent;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.InputEvent;
+import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
+import net.neoforged.neoforge.client.event.RegisterGuiLayersEvent;
+import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
+import net.neoforged.neoforge.client.event.RegisterShadersEvent;
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import net.neoforged.neoforge.client.event.sound.PlaySoundEvent;
+import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
+import net.neoforged.neoforge.client.gui.VanillaGuiLayers;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.entity.player.ItemEntityPickupEvent;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 
-/**
- * Every Forge event the mod listens to, and every registration it makes, in
- * one place. Each one does nothing but call through to the shared code, so a
- * port to another loader is this class written again against that loader.
- */
-public final class ForgeClient {
+/^*
+ * Every NeoForge event the mod listens to, and every registration it makes, in
+ * one place. It mirrors the Forge listener beside it event for event, and each
+ * one does nothing but call through to the shared code.
+ ^/
+public final class NeoForgeClient {
 
-    private ForgeClient() {
+    private NeoForgeClient() {
     }
 
-    static void init() {
+    static void init(IEventBus modBus, ModContainer container) {
         SSConfig.FILE.load(Platform.configDir().resolve(SSConfig.FILE_NAME));
 
-        var modBus = FMLJavaModLoadingContext.get().getModEventBus();
-        modBus.addListener(ForgeClient::onClientSetup);
-        modBus.addListener(ForgeClient::onRegisterKeys);
-        modBus.addListener(ForgeClient::onRegisterOverlays);
-        modBus.addListener(ForgeClient::onRegisterShaders);
-        modBus.addListener(ForgeClient::onRegisterReloadListeners);
-        MinecraftForge.EVENT_BUS.register(ForgeClient.class);
+        container.registerExtensionPoint(IConfigScreenFactory.class,
+                (IConfigScreenFactory) (mod, parent) -> new ConfigScreen(parent));
+        modBus.addListener(NeoForgeClient::onClientSetup);
+        modBus.addListener(NeoForgeClient::onRegisterKeys);
+        modBus.addListener(NeoForgeClient::onRegisterLayers);
+        modBus.addListener(NeoForgeClient::onRegisterShaders);
+        modBus.addListener(NeoForgeClient::onRegisterReloadListeners);
+        NeoForge.EVENT_BUS.register(NeoForgeClient.class);
     }
 
     // ---- registration, on the mod bus ------------------------------------
 
     private static void onClientSetup(FMLClientSetupEvent event) {
-        event.enqueueWork(() -> ModLoadingContext.get().registerExtensionPoint(
-                ConfigScreenHandler.ConfigScreenFactory.class,
-                () -> new ConfigScreenHandler.ConfigScreenFactory(
-                        (minecraft, parent) -> new ConfigScreen(parent))));
         SimpleSchematicsClient.onSetup();
     }
 
@@ -77,14 +75,14 @@ public final class ForgeClient {
         }
     }
 
-    private static void onRegisterOverlays(RegisterGuiOverlaysEvent event) {
-        event.registerAbove(VanillaGuiOverlay.HOTBAR.id(), "resource_list",
-                (gui, graphics, partialTick, width, height) ->
-                        ResourceListOverlay.INSTANCE.render(graphics, partialTick, width, height));
+    private static void onRegisterLayers(RegisterGuiLayersEvent event) {
+        event.registerAbove(VanillaGuiLayers.HOTBAR, Ids.mod("resource_list"),
+                (graphics, delta) -> ResourceListOverlay.INSTANCE.render(graphics,
+                        delta.getGameTimeDeltaPartialTick(false), graphics.guiWidth(), graphics.guiHeight()));
         // After the resource list, so it can stack past it when they share a corner.
-        event.registerAbove(Ids.mod("resource_list"), "build_list",
-                (gui, graphics, partialTick, width, height) ->
-                        BuildListOverlay.INSTANCE.render(graphics, partialTick, width, height));
+        event.registerAbove(Ids.mod("resource_list"), Ids.mod("build_list"),
+                (graphics, delta) -> BuildListOverlay.INSTANCE.render(graphics,
+                        delta.getGameTimeDeltaPartialTick(false), graphics.guiWidth(), graphics.guiHeight()));
     }
 
     private static void onRegisterShaders(RegisterShadersEvent event) {
@@ -99,13 +97,11 @@ public final class ForgeClient {
         event.registerReloadListener((ResourceManagerReloadListener) manager -> SimpleSchematicsClient.onResourcesReloaded());
     }
 
-    // ---- the game, on the Forge bus ---------------------------------------
+    // ---- the game, on the NeoForge bus -------------------------------------
 
     @SubscribeEvent
-    public static void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase == TickEvent.Phase.END) {
-            SimpleSchematicsClient.onClientTick();
-        }
+    public static void onClientTick(ClientTickEvent.Post event) {
+        SimpleSchematicsClient.onClientTick();
     }
 
     @SubscribeEvent
@@ -115,7 +111,7 @@ public final class ForgeClient {
 
     @SubscribeEvent
     public static void onScroll(InputEvent.MouseScrollingEvent event) {
-        if (InputHandler.onScroll(event.getScrollDelta())) {
+        if (InputHandler.onScroll(event.getScrollDeltaY())) {
             event.setCanceled(true);
         }
     }
@@ -128,10 +124,17 @@ public final class ForgeClient {
         }
     }
 
+    /^*
+     * From 1.21 the level is drawn with a bare pose and the camera's turn held on
+     * the render system's model view instead. The renderer is written for the
+     * turn to be in the pose, as it was on 1.20.1, so it is put back there.
+     ^/
     @SubscribeEvent
     public static void onRenderLevel(RenderLevelStageEvent event) {
         if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_WEATHER) {
-            WorldRenderer.render(event.getPoseStack(), event.getProjectionMatrix(), event.getCamera());
+            PoseStack pose = new PoseStack();
+            pose.mulPose(event.getModelViewMatrix());
+            WorldRenderer.render(pose, event.getProjectionMatrix(), event.getCamera());
         }
     }
 
@@ -150,12 +153,12 @@ public final class ForgeClient {
         SimpleSchematicsClient.onRespawn();
     }
 
-    /**
-     * In singleplayer Forge fires this on the integrated server's thread, so the
+    /^*
+     * In singleplayer this fires on the integrated server's thread, so the
      * refresh is handed to the client thread rather than run where it lands.
-     */
+     ^/
     @SubscribeEvent
-    public static void onItemPickup(PlayerEvent.ItemPickupEvent event) {
+    public static void onItemPickup(ItemEntityPickupEvent.Post event) {
         Minecraft.getInstance().execute(SimpleSchematicsClient::onItemPickup);
     }
 
@@ -173,4 +176,4 @@ public final class ForgeClient {
         }
     }
 }
-//?}
+*///?}

@@ -2,7 +2,7 @@
 
 **Guided building made easy.**
 
-A deliberately small schematic mod for **Minecraft Forge 1.20.1**, by WillTDA.
+A deliberately small schematic mod for **Forge 1.20.1** and **NeoForge 1.21.1**, by WillTDA.
 
 Client side only. It is never required on the server, so you can use it on any vanilla or modded server you can already join.
 
@@ -12,17 +12,19 @@ Litematica and its Forge ports do the job, but the everyday parts are awkward: s
 
 ## Building it
 
-Gradle needs a JDK 21 to run. The Forge 1.20.1 build itself compiles with Java 17, which Gradle uses if it is installed and downloads if it is not. Then:
+Gradle needs a JDK 21 to run. The Forge 1.20.1 build compiles with Java 17 and the NeoForge 1.21.1 build with Java 21; Gradle uses them if they are installed and downloads them if not. Then:
 
 ```
 ./gradlew build
 ```
 
-The jar lands in `versions/1.20.1-forge/build/libs/`. Drop it in your `mods` folder. `./gradlew dist` copies it into `dist/` as well.
+Each jar lands in its node's `build/libs/`: `versions/1.20.1-forge/build/libs/simpleschematics-forge-1.20.1-<version>.jar` and `versions/1.21.1-neoforge/build/libs/simpleschematics-neoforge-1.21.1-<version>.jar`. Drop the one for your game in your `mods` folder. `./gradlew dist` copies both into `dist/` as well.
 
-For a development client, run `./gradlew :1.20.1-forge:runClient`. On Windows, use `gradlew.bat` in place of `./gradlew`.
+For a development client, run `./gradlew :1.20.1-forge:runClient` or `./gradlew :1.21.1-neoforge:runClient`. On Windows, use `gradlew.bat` in place of `./gradlew`.
 
-The project is built with [Stonecutter](https://stonecutter.kikugie.dev/), so one source tree can be built for several Minecraft versions and loaders. Each version and loader is a node under `versions/`; today there is one, `1.20.1-forge`. `docs/porting-plan.md` explains the layout and the plan for NeoForge 1.21.1.
+The project is built with [Stonecutter](https://stonecutter.kikugie.dev/), so one source tree is built for several Minecraft versions and loaders. Each version and loader is a node under `versions/`: `1.20.1-forge` and `1.21.1-neoforge`. `docs/porting-plan.md` explains the layout and how further versions and Fabric would join.
+
+Schematics move between versions. A schematic saved on 1.20.1 opens on 1.21.1 with its blocks and items upgraded the way an old world would be; one saved on a newer game than the one you are playing is read as it is, so anything the older game does not know is left out.
 
 To run the regression checks, write the current runtime classpath with `./gradlew :1.20.1-forge:writePrintTestClasspath`, then run `scripts/check_print_placement.ps1` on Windows or `scripts/check_print_placement.sh` elsewhere, under Java 17, and `python scripts/check_print_ui.py`. These headless checks cover block states, material accounting, NBT, transforms, fill grouping, the resume journal, settings persistence and layout; gameplay and networking require an in-game check.
 

@@ -1,5 +1,6 @@
 package dev.willtda.simpleschematics.resource;
 
+import dev.willtda.simpleschematics.util.Ids;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
@@ -140,7 +141,7 @@ public final class MaterialResolver {
         // Two items in one block, neither of which the combined block hands back
         // as its own item: the potted blocks and the candle cakes report air.
         if (block instanceof FlowerPotBlock pot) {
-            Item plant = pot.getContent().asItem();
+            Item plant = plantIn(pot).asItem();
             return plant == Items.AIR
                     ? Cost.of(Items.FLOWER_POT, 1)
                     : new Cost(List.of(new Cost.Entry(Items.FLOWER_POT, 1), new Cost.Entry(plant, 1)));
@@ -174,6 +175,15 @@ public final class MaterialResolver {
         return Cost.of(item, amount);
     }
 
+    /** What a potted block holds, or air for an empty pot. */
+    public static Block plantIn(FlowerPotBlock pot) {
+        //? if >=1.21 {
+        /*return pot.getPotted();
+        *///?} else {
+        return pot.getContent();
+        //?}
+    }
+
     /**
      * What is already standing of a block that is only part way there, or
      * nothing if the world block is not a step towards the wanted one.
@@ -191,7 +201,7 @@ public final class MaterialResolver {
     public static Cost standing(BlockState wanted, BlockState actual) {
         Block block = wanted.getBlock();
         if (block instanceof FlowerPotBlock pot) {
-            return pot.getContent() != Blocks.AIR && actual.is(Blocks.FLOWER_POT)
+            return plantIn(pot) != Blocks.AIR && actual.is(Blocks.FLOWER_POT)
                     ? Cost.of(Items.FLOWER_POT, 1)
                     : Cost.NOTHING;
         }
@@ -244,7 +254,7 @@ public final class MaterialResolver {
             return null;
         }
         String path = id.getPath().substring(0, id.getPath().length() - "_cake".length());
-        Item candle = BuiltInRegistries.ITEM.get(new ResourceLocation(id.getNamespace(), path));
+        Item candle = BuiltInRegistries.ITEM.get(Ids.of(id.getNamespace(), path));
         return candle == Items.AIR ? null : candle;
     }
 
@@ -271,7 +281,7 @@ public final class MaterialResolver {
         String path = id.getPath();
         String stripped = path.startsWith("wall_") ? path.substring(5) : path.replace("_wall_", "_");
         if (!stripped.equals(path)) {
-            Item guess = BuiltInRegistries.ITEM.get(new ResourceLocation(id.getNamespace(), stripped));
+            Item guess = BuiltInRegistries.ITEM.get(Ids.of(id.getNamespace(), stripped));
             if (guess != Items.AIR) {
                 return guess;
             }

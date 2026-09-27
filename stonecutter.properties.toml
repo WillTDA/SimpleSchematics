@@ -1,4 +1,4 @@
-# Mod metadata, interpolated into META-INF/mods.toml at build time.
+# Mod metadata, interpolated into each loader's mods toml at build time.
 # Gradle's own options stay in gradle.properties.
 # See https://stonecutter.kikugie.dev/wiki/config/properties
 mod.id = "simpleschematics"
@@ -10,3 +10,6 @@ mod.licence = "Apache-2.0"
 
 [forge."1.20.1"]
 deps.forge = "47.4.20"
+
+[neoforge."1.21.1"]
+deps.neoforge = "21.1.251"

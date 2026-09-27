@@ -2,7 +2,12 @@ package dev.willtda.simpleschematics.render;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
+//? if >=1.21 {
+/*import com.mojang.blaze3d.vertex.ByteBufferBuilder;
+import org.joml.Matrix4fStack;
+*///?} else {
 import com.mojang.blaze3d.vertex.BufferBuilder;
+//?}
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.willtda.simpleschematics.client.ClientState;
 import dev.willtda.simpleschematics.client.EditMode;
@@ -40,8 +45,13 @@ public final class WorldRenderer {
 
     /** One baked copy per schematic, shared between every placement that uses it. */
     private static final Map<String, BakedSchematic> CACHE = new HashMap<>();
+    //? if >=1.21 {
+    /*private static final MultiBufferSource.BufferSource OVERLAYS =
+            MultiBufferSource.immediate(new ByteBufferBuilder(16384));
+    *///?} else {
     private static final MultiBufferSource.BufferSource OVERLAYS =
             MultiBufferSource.immediate(new BufferBuilder(16384));
+    //?}
     private static int reloadGeneration;
 
     /**
@@ -81,9 +91,15 @@ public final class WorldRenderer {
 
         Vec3 camera = view.getPosition();
 
+        //? if >=1.21 {
+        /*Matrix4fStack modelView = RenderSystem.getModelViewStack();
+        modelView.pushMatrix();
+        modelView.identity();
+        *///?} else {
         PoseStack modelView = RenderSystem.getModelViewStack();
         modelView.pushPose();
         modelView.setIdentity();
+        //?}
         RenderSystem.applyModelViewMatrix();
 
         pose.pushPose();
@@ -98,7 +114,11 @@ public final class WorldRenderer {
             }
         } finally {
             pose.popPose();
+            //? if >=1.21 {
+            /*modelView.popMatrix();
+            *///?} else {
             modelView.popPose();
+            //?}
             RenderSystem.applyModelViewMatrix();
         }
     }

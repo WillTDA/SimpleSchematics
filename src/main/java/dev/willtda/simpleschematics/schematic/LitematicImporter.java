@@ -4,6 +4,7 @@ import dev.willtda.simpleschematics.SimpleSchematics;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.level.block.Blocks;
@@ -36,7 +37,11 @@ public final class LitematicImporter {
     public static Schematic read(Path file) throws IOException {
         CompoundTag root;
         try (InputStream in = new BufferedInputStream(Files.newInputStream(file))) {
+            //? if >=1.21 {
+            /*root = NbtIo.readCompressed(in, NbtAccounter.unlimitedHeap());
+            *///?} else {
             root = NbtIo.readCompressed(in);
+            //?}
         }
         if (root == null || !root.contains("Regions")) {
             throw new IOException("This does not look like a litematic file, there are no regions in it");
@@ -50,9 +55,10 @@ public final class LitematicImporter {
             throw new IOException("The file contains no regions");
         }
 
+        DataUpgrade upgrade = new DataUpgrade(root.getInt("MinecraftDataVersion"));
         List<Region> regions = new ArrayList<>();
         for (String key : regionsTag.getAllKeys()) {
-            Region region = Region.parse(key, regionsTag.getCompound(key));
+            Region region = Region.parse(key, regionsTag.getCompound(key), upgrade);
             if (region != null) {
                 regions.add(region);
             }
@@ -104,7 +110,7 @@ public final class LitematicImporter {
             }
 
             for (Tag tag : region.blockEntities) {
-                CompoundTag be = ((CompoundTag) tag).copy();
+                CompoundTag be = upgrade.blockEntity(((CompoundTag) tag).copy());
                 int x = be.getInt("x") + offsetX;
                 int y = be.getInt("y") + offsetY;
                 int z = be.getInt("z") + offsetZ;
@@ -115,7 +121,7 @@ public final class LitematicImporter {
             }
 
             for (Tag tag : region.entities) {
-                CompoundTag entity = ((CompoundTag) tag).copy();
+                CompoundTag entity = upgrade.entity(((CompoundTag) tag).copy());
                 ListTag pos = entity.getList("Pos", Tag.TAG_DOUBLE);
                 if (pos.size() == 3) {
                     ListTag shifted = new ListTag();
@@ -169,7 +175,7 @@ public final class LitematicImporter {
         ListTag blockEntities;
         ListTag entities;
 
-        static Region parse(String name, CompoundTag tag) {
+        static Region parse(String name, CompoundTag tag, DataUpgrade upgrade) {
             try {
                 CompoundTag posTag = tag.getCompound("Position");
                 CompoundTag sizeTag = tag.getCompound("Size");
@@ -193,7 +199,7 @@ public final class LitematicImporter {
                 region.palette = new BlockState[Math.max(1, paletteTag.size())];
                 region.palette[0] = Blocks.AIR.defaultBlockState();
                 for (int i = 0; i < paletteTag.size(); i++) {
-                    region.palette[i] = SchematicIO.readState(paletteTag.getCompound(i));
+                    region.palette[i] = SchematicIO.readState(upgrade.blockState(paletteTag.getCompound(i)));
                 }
 
                 long[] packed = tag.getLongArray("BlockStates");

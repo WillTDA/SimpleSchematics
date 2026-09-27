@@ -1,9 +1,8 @@
 package dev.willtda.simpleschematics.render;
 
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import dev.willtda.simpleschematics.SimpleSchematics;
+import dev.willtda.simpleschematics.util.Ids;
 import net.minecraft.client.renderer.ShaderInstance;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceProvider;
 
 import java.io.IOException;
@@ -17,7 +16,7 @@ public final class HologramShader {
 
     /** Builds the shader from the resource packs. The loader registers it and hands it back through {@link #set}. */
     public static ShaderInstance create(ResourceProvider resources) throws IOException {
-        return new ShaderInstance(resources, new ResourceLocation(SimpleSchematics.MOD_ID, "hologram"),
+        return new ShaderInstance(resources, Ids.mod("hologram"),
                 DefaultVertexFormat.BLOCK);
     }
 
