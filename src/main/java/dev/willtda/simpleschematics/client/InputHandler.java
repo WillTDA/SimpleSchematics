@@ -54,7 +54,7 @@ import java.util.Map;
  *       activation item is in your hand.</li>
  *   <li>In Scan, right click sets the start corner and left click sets the end.</li>
  *   <li>In Build, your normal place block button drops the hologram.</li>
- *   <li>In Print, right click or Enter starts the selected build.</li>
+ *   <li>In Print, right click or Enter starts the selected build, and stops it again.</li>
  * </ul>
  */
 public final class InputHandler {
@@ -360,7 +360,7 @@ public final class InputHandler {
         } else if (STATE.mode() == EditMode.PRINT) {
             if (useArmed) {
                 useArmed = false;
-                PrintManager.INSTANCE.requestPrint();
+                PrintManager.INSTANCE.toggle();
             }
             event.setSwingHand(false);
             event.setCanceled(true);
@@ -872,7 +872,7 @@ public final class InputHandler {
         } else if (STATE.hasPending()) {
             commitPending();
         } else if (STATE.mode() == EditMode.PRINT) {
-            PrintManager.INSTANCE.requestPrint();
+            PrintManager.INSTANCE.toggle();
         } else {
             mc.setScreen(new LibraryScreen(null));
         }

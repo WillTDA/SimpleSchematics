@@ -23,4 +23,13 @@ final class PrintAcknowledgement {
             return true;
         }
     }
+
+    /** Whether any block anywhere is still showing a guess the server has not answered. */
+    static boolean any(ClientLevel level) {
+        try {
+            return !((Long2ObjectMap<?>) PENDING.get(HANDLER.get(level))).isEmpty();
+        } catch (IllegalAccessException exception) {
+            return true;
+        }
+    }
 }

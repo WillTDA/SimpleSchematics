@@ -195,6 +195,8 @@ public final class ConfigScreen extends Screen {
                 "simpleschematics.tip.print.source");
         intSlider("simpleschematics.config.printDelay", x, fieldWidth, c.printDelay, 1, 40,
                 "simpleschematics.tip.print.delay");
+        toggle("simpleschematics.config.printInstant", x, fieldWidth, c.printInstant,
+                "simpleschematics.tip.print.instant");
         toggle("simpleschematics.config.printSounds", x, fieldWidth, c.printSounds,
                 "simpleschematics.tip.print.sounds");
         toggle("simpleschematics.config.printParticles", x, fieldWidth, c.printParticles);

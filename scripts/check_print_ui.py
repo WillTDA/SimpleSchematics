@@ -61,20 +61,15 @@ def check_language() -> int:
     entries = json.loads(us, object_pairs_hook=unique_object)
     sources = "\n".join(path.read_text(encoding="utf-8") for path in JAVA.rglob("*.java"))
     used = set(re.findall(r'"((?:key\.)?simpleschematics\.[A-Za-z0-9_.]*[A-Za-z0-9_])"', sources))
-    manager = (JAVA / "printing/PrintManager.java").read_text(encoding="utf-8")
+    printing = "\n".join(path.read_text(encoding="utf-8") for path in (JAVA / "printing").glob("*.java"))
     supplied = {}
-    for match in re.finditer(r"\b(tr|info|error|finish|confirm)\(", manager):
-        args = call_args(manager, match.end())
-        key_index = 1 if match[1] == "confirm" else 0
-        if len(args) <= key_index:
+    for match in re.finditer(r"\btr\(", printing):
+        args = call_args(printing, match.end())
+        if not args:
             continue
-        for key in STRING.findall(args[key_index]):
-            if not re.fullmatch(r"[a-z_]+", key):
-                continue
-            full = "simpleschematics.print." + key
-            used.add(full)
-            count = len(args) - (3 if match[1] == "confirm" else 1)
-            supplied.setdefault(full, []).append(count)
+        for key in STRING.findall(args[0]):
+            if key.startswith("simpleschematics.print."):
+                supplied.setdefault(key, []).append(len(args) - 1)
     missing = used - entries.keys()
     orphaned = {key for key in entries if key.startswith("simpleschematics.")} - used
     assert not missing, "Missing translations: " + ", ".join(sorted(missing))
@@ -84,7 +79,7 @@ def check_language() -> int:
         # A conditional call may supply an unused argument to the shorter message.
         assert all(count >= placeholders for count in counts), f"Missing arguments for {key}: {counts}"
         assert min(counts) == placeholders, f"Unused message arguments for {key}: {counts}"
-    warning = entries["simpleschematics.print.survival_warning"]
+    warning = entries["simpleschematics.print.note.rules"]
     assert "Automated building is bannable on most servers." in warning
     assert "Double-check the server rules before proceeding." in warning
     return len(entries)

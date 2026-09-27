@@ -682,7 +682,7 @@ public final class LibraryScreen extends Screen {
         ClientState.INSTANCE.setMode(EditMode.PRINT);
         closePreview();
         this.minecraft.setScreen(null);
-        PrintManager.INSTANCE.requestPrint();
+        PrintManager.INSTANCE.start();
     }
 
     private void convertSelected() {

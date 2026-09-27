@@ -90,7 +90,7 @@ public final class SimpleSchematicsClient {
 
     @SubscribeEvent
     public static void onLeave(ClientPlayerNetworkEvent.LoggingOut event) {
-        PrintManager.INSTANCE.reset();
+        PrintManager.INSTANCE.leaveWorld();
         ClientState.INSTANCE.flushMode();
         PlacementManager.INSTANCE.onLeaveWorld();
         WorldRenderer.invalidateAll();

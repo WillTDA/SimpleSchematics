@@ -77,6 +77,7 @@ public final class SSConfig {
     // ---- print ------------------------------------------------------------
     public final ForgeConfigSpec.EnumValue<PrintSource> printSource;
     public final ForgeConfigSpec.IntValue printDelay;
+    public final ForgeConfigSpec.BooleanValue printInstant;
     public final ForgeConfigSpec.BooleanValue printSounds;
     public final ForgeConfigSpec.BooleanValue printParticles;
     public final ForgeConfigSpec.BooleanValue printWarnSurvival;
@@ -233,6 +234,9 @@ public final class SSConfig {
                 .defineEnum("printSource", PrintSource.BOTH);
         printDelay = b.comment("Ticks between Survival block placements. Twenty ticks is one second")
                 .defineInRange("printDelay", 4, 1, 40);
+        printInstant = b.comment("Paste Creative builds as fast as the server accepts commands instead of at a steady pace.",
+                        "Needs operator permission, or cheats in singleplayer")
+                .define("printInstant", false);
         printSounds = b.comment("Play each block's placement sound while printing")
                 .define("printSounds", true);
         printParticles = b.comment("Show a small burst of particles at each printed block")

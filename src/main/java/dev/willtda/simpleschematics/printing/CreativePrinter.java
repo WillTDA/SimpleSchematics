@@ -3,8 +3,6 @@ package dev.willtda.simpleschematics.printing;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import dev.willtda.simpleschematics.SimpleSchematics;
-import dev.willtda.simpleschematics.placement.Placement;
-import dev.willtda.simpleschematics.resource.Banks;
 import dev.willtda.simpleschematics.schematic.Schematic;
 import dev.willtda.simpleschematics.util.DataPaths;
 import net.minecraft.client.Minecraft;
@@ -18,11 +16,13 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtUtils;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.decoration.PaintingVariant;
+import net.minecraft.world.entity.player.ChatVisiblity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.entity.decoration.PaintingVariant;
 import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
@@ -30,361 +30,658 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.phys.Vec3;
 
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.BitSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 
-/** Operator-only Creative pasting through the server's ordinary command interface. */
+/**
+ * Operator-only Creative pasting through the server's ordinary command interface.
+ *
+ * <p>Blocks go in waves. Each wave walks the plan once, lowest layer first,
+ * and sends every block that can stand where it is going, grouping identical
+ * blocks into boxes so one fill command places a whole wall. Then it waits for
+ * the server to catch up, checks what actually went in, and starts another
+ * wave for anything that could not stand the first time round: the torch whose
+ * wall was in the same wave, the sand whose floor was. Most builds are done in
+ * two or three waves. When a few waves in a row change nothing, what is left
+ * is left for the player and reported rather than stopping the paste.</p>
+ *
+ * <p>The old paste walked the whole volume three times at a fixed rate,
+ * grouped blocks only along one row, sent four commands a tick and waited for
+ * each one to be seen, so a large build took minutes before it was checked
+ * twice more. Instant paste lifts the pace to as many commands as the server
+ * will take; the steady pace keeps a shared server responsive.</p>
+ *
+ * <p>Saved container contents and entities follow the blocks. What has been
+ * placed and restored is written to a journal as it happens, so a paste that
+ * is interrupted picks up exactly where it stopped: a container placed but not
+ * yet filled still gets filled, and an entity is never summoned twice.</p>
+ */
 public final class CreativePrinter {
-    public enum Status { RUNNING, COMPLETE, BLOCKED, NO_PERMISSION, CANCELLED }
+
+    public enum Status { RUNNING, COMPLETE, NO_PERMISSION, CANCELLED }
+
+    private enum Stage { BLOCKS, SETTLE, VERIFY, WAIT, DATA, DONE }
+
+    private enum Step { NOTHING_LEFT, WAITING, SENT }
 
     // Chat command packets in 1.20.1 reject anything longer than 256 characters.
     private static final int MAX_COMMAND = 256;
-    private static final int COMMANDS_PER_TICK = 4;
-    private static final int SCAN_PER_TICK = 4096;
+    /** The server's commandModificationBlockLimit by default. A lower limit is learnt from its reply. */
+    private static final int FILL_LIMIT = 32768;
     private static final int ACK_TICKS = 100;
-    private final Placement placement;
+    /** Waves in a row that place nothing more before the rest is left for the player. */
+    private static final int STUCK_WAVES = 3;
+    private static final int WAIT_TICKS = 40;
+    private static final long VERIFY_BUDGET_NANOS = 4_000_000L;
+
+    private final PrintPlan plan;
     private final Schematic schematic;
     private final ClientLevel level;
-    private final BlockPos origin;
-    private final Rotation rotation;
-    private final Mirror mirror;
     private final boolean replace;
     private final boolean entities;
     private final boolean contents;
-    private final ArrayDeque<Target> blocks = new ArrayDeque<>();
-    private final List<Pending> pending = new ArrayList<>();
-    private final ArrayDeque<Payload> data = new ArrayDeque<>();
-    private final Set<String> attemptedEntities = new HashSet<>();
-    private final Path entityJournal;
+    private final boolean instant;
+    private final int commandsPerTick;
+    private final int payloadsPerTick;
+    private final long budgetNanos;
     private final String signature;
+    private final PrintJournal journal;
+
+    /** Sent in the current wave, so a box never covers a block twice. */
+    private final BitSet sent = new BitSet();
+    private final BitSet everSent = new BitSet();
+    private final BitSet placedHere = new BitSet();
+    /** Left for the player after several waves, or too long to send as a command. */
+    private final BitSet abandoned = new BitSet();
+    private final BitSet queued = new BitSet();
+    private final BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+    private final BlockPos.MutableBlockPos probe = new BlockPos.MutableBlockPos();
+    private final ArrayDeque<Payload> data = new ArrayDeque<>();
+    private final ArrayDeque<Integer> entityQueue = new ArrayDeque<>();
+    private final List<Integer> entityLater = new ArrayList<>();
+    /** Instant payloads go unchecked one by one; they are marked done once the server has had them all. */
+    private final List<UUID> doneAfterBarrier = new ArrayList<>();
+
     private Status status = Status.RUNNING;
     private String detail = "";
-    private int cursor;
+    private Stage stage = Stage.BLOCKS;
     private int tick;
-    private int placed;
-    private int skipped;
-    private int deferred;
-    private int entityCursor;
+    private int cursor;
+    private int stuck;
+    private int lastLeft = Integer.MAX_VALUE;
+    private int lastPlaced;
+    private int refusedBeforeData = -1;
+    private int waitUntil;
     private int verifyCursor;
-    private int settleAt = -1;
-    private boolean verifiedBlocks;
+    private int verifyLeft;
+    private int verifyUnloaded;
+    private int verifyAttention;
+    private boolean abandoning;
+    private int left;
+    private int unloaded;
+    private int attention;
+    private int omitted;
+    private int fillLimit = FILL_LIMIT;
+    private boolean journalWarned;
+
+    private long barrierToken;
+    private boolean barrierAnswered;
+    private int barrierSentAt;
+    private int barrierAnsweredAt;
+    private boolean finalBarrier;
+
+    private Payload pendingPayload;
+    private int payloadSentAt;
     private UUID pendingEntity;
     private CompoundTag pendingEntityData;
     private int entitySentAt;
-    private Payload pendingPayload;
-    private int payloadSentAt;
-    private boolean scanned;
-    private boolean journalReadable = true;
+    private int entityRetryAt;
 
-    public CreativePrinter(Placement placement, Schematic schematic, boolean replace,
-                           boolean entities, boolean contents) {
-        this.placement = placement;
-        this.schematic = schematic;
+    public CreativePrinter(PrintPlan plan, int work, boolean replace, boolean entities, boolean contents, boolean instant) {
+        Minecraft mc = Minecraft.getInstance();
+        this.plan = plan;
+        this.schematic = plan.schematic;
+        this.level = mc.level;
         this.replace = replace;
         this.entities = entities;
         this.contents = contents;
-        this.level = Minecraft.getInstance().level;
-        this.origin = placement.origin();
-        this.rotation = placement.rotation();
-        this.mirror = placement.mirror();
+        this.instant = instant;
+        this.left = work;
+        // A server's own packet limits sit around five hundred a second, and
+        // every one of these is a packet. Singleplayer has no such limit.
+        boolean local = mc.isLocalServer();
+        this.commandsPerTick = instant ? (local ? 256 : 16) : 4;
+        this.payloadsPerTick = instant ? Math.max(1, commandsPerTick / 3) : 1;
+        this.budgetNanos = instant ? (local ? 12_000_000L : 6_000_000L) : 3_000_000L;
         String world = DataPaths.currentWorldKey();
         this.signature = world + "/" + (level == null ? "" : level.dimension().location()) + "/"
-                + placement.id() + "/" + origin.toShortString() + "/" + rotation + "/" + mirror;
+                + plan.placement.id() + "/" + plan.placement.origin().toShortString() + "/"
+                + plan.placement.rotation() + "/" + plan.placement.mirror();
         String worldId = UUID.nameUUIDFromBytes(world.getBytes(StandardCharsets.UTF_8)).toString();
-        this.entityJournal = DataPaths.root().resolve("print-entities").resolve(worldId + ".txt");
+        this.journal = PrintJournal.open(DataPaths.root().resolve("print-entities").resolve(worldId + ".txt"));
+        if (!journal.readable()) {
+            SimpleSchematics.LOG.warn("Could not read Creative print history; saved entities will be left out");
+        }
         if (entities) {
-            try {
-                if (Files.exists(entityJournal)) attemptedEntities.addAll(Files.readAllLines(entityJournal));
-            } catch (IOException e) {
-                journalReadable = false;
-                SimpleSchematics.LOG.warn("Could not read Creative print entity history", e);
+            for (int i = 0; i < schematic.entities().size(); i++) {
+                entityQueue.add(i);
             }
         }
     }
 
-    public Status status() { return status; }
-    public int placed() { return placed; }
-    /** Payloads omitted because they were unsafe, oversized or already attempted. */
-    public int skipped() { return skipped; }
-    public String detail() { return detail; }
-    public void cancel() { status = Status.CANCELLED; }
+    public Status status() {
+        return status;
+    }
+
+    public int placed() {
+        return placedHere.cardinality();
+    }
+
+    /** Blocks left for the player: in the way, outside the world, or never taken by the server. */
+    public int attention() {
+        return attention;
+    }
+
+    /** Saved data entries left out because they were unsafe, oversized or could not be confirmed. */
+    public int omitted() {
+        // Instant payloads are not checked one by one, so the server's refusals stand in for that.
+        // The steady pace checks each one, and counting its refusals as well would count them twice.
+        return omitted + (instant && refusedBeforeData >= 0 ? Math.max(0, PrintChat.refused() - refusedBeforeData) : 0);
+    }
+
+    public String detail() {
+        return detail;
+    }
+
+    public void cancel() {
+        status = Status.CANCELLED;
+    }
+
+    Component statusLine() {
+        return switch (stage) {
+            case WAIT -> PrintManager.tr("simpleschematics.print.waiting_chunks", unloaded);
+            case DATA -> entityLater.isEmpty() || !data.isEmpty() || !entityQueue.isEmpty()
+                    ? PrintManager.tr("simpleschematics.print.restoring", data.size() + entityQueue.size())
+                    : PrintManager.tr("simpleschematics.print.waiting_chunks", entityLater.size());
+            default -> PrintManager.tr("simpleschematics.print.progress", placed(), left);
+        };
+    }
 
     public void tick() {
-        if (status != Status.RUNNING) return;
+        if (status != Status.RUNNING) {
+            return;
+        }
         Minecraft mc = Minecraft.getInstance();
         if (mc.level != level || mc.player == null || mc.gameMode == null || mc.getConnection() == null) {
             cancel();
             return;
         }
         if (!mc.player.isCreative() || !mc.player.hasPermissions(2)) {
-            fail(Status.NO_PERMISSION, "Creative printing requires Creative Mode and operator permission.");
+            status = Status.NO_PERMISSION;
+            detail = "simpleschematics.print.no_permission";
             return;
         }
-        if (!origin.equals(placement.origin()) || rotation != placement.rotation() || mirror != placement.mirror()) {
-            fail(Status.BLOCKED, "The placement moved. Start Print again at its new position.");
+        if (mc.options.chatVisibility().get() == ChatVisiblity.HIDDEN) {
+            status = Status.NO_PERMISSION;
+            detail = "simpleschematics.print.chat_hidden";
             return;
         }
         tick++;
-        if (!scanned) {
-            scan();
-            return;
+        int learnt = PrintChat.fillLimit();
+        if (learnt > 0 && learnt < fillLimit) {
+            fillLimit = learnt;
         }
-        acknowledgeBlocks();
-        if (status != Status.RUNNING) return;
-        int commands = 0;
-        while (commands < COMMANDS_PER_TICK && !blocks.isEmpty() && pending.size() < 16) {
-            Target target = blocks.removeFirst();
-            if (!valid(target.world)) return;
-            BlockState actual = level.getBlockState(target.world);
-            if (PrintPlacement.matches(target.state, actual)) continue;
-            if (placement.isBank(Banks.canonical(level, target.world))) {
-                fail(Status.BLOCKED, "A linked material container is in the way. Move it outside the build before continuing.");
-                return;
-            }
-            if (!replace && !actual.canBeReplaced() && !PrintPlacement.isPartial(target.state, actual)) {
-                fail(Status.BLOCKED, "A block is in the way at " + target.world.toShortString()
-                        + ". Clear it or enable replacement in Print settings.");
-                return;
-            }
-            // Finishing the other half of a chest connects it without clearing its inventory.
-            boolean existingContainer = actual.hasBlockEntity() && PrintPlacement.isPartial(target.state, actual);
-            if (existingContainer || !survives(target)) {
-                blocks.addLast(target);
-                if (++deferred >= blocks.size()) {
-                    if (!pending.isEmpty()) break;
-                    fail(Status.BLOCKED, "Some blocks need support or conflict with their neighbours. Fix the build and continue Print.");
-                    return;
+        switch (stage) {
+            case BLOCKS -> placeBlocks(mc);
+            case SETTLE -> {
+                if (barrierPassed(mc)) {
+                    startVerify(false);
                 }
+            }
+            case VERIFY -> verify();
+            case WAIT -> {
+                if (tick >= waitUntil) {
+                    newWave();
+                }
+            }
+            case DATA -> tickData(mc);
+            default -> {
+            }
+        }
+    }
+
+    // ---- blocks -----------------------------------------------------------
+
+    private void newWave() {
+        cursor = 0;
+        sent.clear();
+        stage = Stage.BLOCKS;
+    }
+
+    private void placeBlocks(Minecraft mc) {
+        long deadline = System.nanoTime() + budgetNanos;
+        int commands = 0;
+        while (cursor < plan.size() && commands < commandsPerTick) {
+            if ((cursor & 63) == 0 && System.nanoTime() > deadline) {
+                return;
+            }
+            int index = plan.target(cursor++);
+            if (sent.get(index) || abandoned.get(index) || plan.accepted(index)) {
                 continue;
             }
-            deferred = 0;
-            List<Target> batch = new ArrayList<>();
-            batch.add(target);
-            if (!target.state.hasBlockEntity() && (replace || actual.isAir())) {
-                while (!blocks.isEmpty() && batch.size() < 256) {
-                    Target next = blocks.peekFirst();
-                    Target last = batch.get(batch.size() - 1);
-                    if (next.local.getY() != target.local.getY() || next.local.getZ() != target.local.getZ()
-                            || next.local.getX() != last.local.getX() + 1 || next.state != target.state
-                            || !level.hasChunkAt(next.world) || (!replace && !level.getBlockState(next.world).isAir())
-                            || placement.isBank(Banks.canonical(level, next.world))
-                            || !survives(next)) break;
-                    batch.add(blocks.removeFirst());
-                }
+            BlockState wanted = plan.wanted(index);
+            plan.world(index, pos);
+            if (!PrintPlan.inWorld(level, pos) || !level.hasChunkAt(pos)) {
+                continue;
             }
-            String command;
-            if (batch.size() > 1) {
-                command = "fill " + coordinates(target.world) + " " + coordinates(batch.get(batch.size() - 1).world)
-                        + " " + stateText(target.state) + (replace ? " replace" : " keep");
-            } else {
-                command = "setblock " + coordinates(target.world) + " " + stateText(target.state)
-                        + (replace || !actual.isAir() ? " replace" : " keep");
-                if (!replace && !actual.isAir()) {
-                    // The server must still see exactly the replaceable block inspected here.
-                    command = "execute if block " + coordinates(target.world) + " " + stateText(actual)
-                            + " run " + command;
-                }
+            BlockState actual = level.getBlockState(pos);
+            if (!placeable(wanted, actual, pos)) {
+                continue;
             }
-            if (command.length() > MAX_COMMAND) {
-                fail(Status.BLOCKED, "A block state exceeds Minecraft's command length limit at " + target.world.toShortString() + ".");
-                return;
+            String command = command(index, wanted, actual);
+            if (command == null) {
+                abandoned.set(index);
+                continue;
             }
-            mc.getConnection().sendCommand(command);
-            pending.add(new Pending(batch, tick));
+            send(mc, command);
             commands++;
         }
-        if (!blocks.isEmpty() || !pending.isEmpty()) return;
-        if (!verifiedBlocks) {
-            verifyFinishedBlocks();
-            return;
-        }
-        if (pendingPayload != null) {
-            if (tick - payloadSentAt > ACK_TICKS) {
-                fail(Status.BLOCKED, "The server did not confirm the saved container or entity data. Check command permissions before continuing.");
-            }
-            return;
-        }
-        if (!data.isEmpty()) {
-            if (commands < COMMANDS_PER_TICK) sendPayload(mc, data.removeFirst());
-            return;
-        }
-        if (entities && commands < COMMANDS_PER_TICK && !tickEntities()) return;
-        if (pendingEntity == null && (!entities || entityCursor >= schematic.entities().size()) && data.isEmpty()) {
-            status = Status.COMPLETE;
-            detail = skipped == 0 ? "" : skipped + " saved data entries were omitted or had already been attempted.";
+        if (cursor >= plan.size()) {
+            sendBarrier(mc);
+            stage = Stage.SETTLE;
         }
     }
 
-    private void scan() {
-        int end = (int) Math.min(schematic.volume(), (long) cursor + SCAN_PER_TICK);
-        for (; cursor < end; cursor++) {
-            if (placement.isAccepted(cursor)) continue;
-            int x = cursor % schematic.width();
-            int z = (cursor / schematic.width()) % schematic.length();
-            int y = cursor / (schematic.width() * schematic.length());
-            BlockState state = schematic.getBlockState(x, y, z).mirror(mirror).rotate(rotation);
-            if (state.isAir()) continue;
-            BlockPos local = new BlockPos(x, y, z);
-            BlockPos world = placement.toWorld(schematic, x, y, z);
-            if (!valid(world)) return;
-            BlockState actual = level.getBlockState(world);
-            if (PrintPlacement.matches(state, actual)) continue;
-            if (!replace && !actual.canBeReplaced() && !PrintPlacement.isPartial(state, actual)) {
-                fail(Status.BLOCKED, "A block is in the way at " + world.toShortString()
-                        + ". Clear it or enable replacement in Print settings.");
-                return;
-            }
-            blocks.add(new Target(local, world, state));
+    private boolean placeable(BlockState wanted, BlockState actual, BlockPos at) {
+        if (PrintPlacement.matches(wanted, actual) || plan.isBank(level, at)) {
+            return false;
         }
-        scanned = cursor >= schematic.volume();
+        boolean partial = PrintPlacement.isPartial(wanted, actual);
+        if (!replace && !actual.canBeReplaced() && !partial) {
+            return false;
+        }
+        // A lone chest joins its partner by itself when that goes in, keeping what is inside.
+        if (partial && actual.hasBlockEntity()) {
+            return false;
+        }
+        return survives(wanted, at);
     }
 
-    private void verifyFinishedBlocks() {
-        if (settleAt < 0) settleAt = tick + 2;
-        if (tick < settleAt) return;
-        int end = (int) Math.min(schematic.volume(), (long) verifyCursor + SCAN_PER_TICK);
-        for (; verifyCursor < end; verifyCursor++) {
-            if (placement.isAccepted(verifyCursor)) continue;
-            int x = verifyCursor % schematic.width();
-            int z = (verifyCursor / schematic.width()) % schematic.length();
-            int y = verifyCursor / (schematic.width() * schematic.length());
-            BlockState expected = schematic.getBlockState(x, y, z).mirror(mirror).rotate(rotation);
-            if (expected.isAir()) continue;
-            BlockPos local = new BlockPos(x, y, z);
-            BlockPos world = placement.toWorld(schematic, x, y, z);
-            if (!valid(world)) return;
-            if (!PrintPlacement.matches(expected, level.getBlockState(world))
-                    || !survives(new Target(local, world, expected))) {
-                fail(Status.BLOCKED, "A finished block changed or lost support at " + world.toShortString()
-                        + ". Check its neighbours before continuing Print.");
-                return;
+    /** One command for this block and as many identical neighbours as can join it, or null if too long. */
+    private String command(int index, BlockState wanted, BlockState actual) {
+        BlockPos at = pos.immutable();
+        if (!wanted.hasBlockEntity() && (replace || actual.isAir())) {
+            int palette = plan.paletteOf(index);
+            int[] box = CuboidPlanner.grow(schematic.width(), schematic.height(), schematic.length(), index,
+                    other -> joins(other, palette, wanted), fillLimit);
+            if (CuboidPlanner.volume(box) > 1) {
+                BlockPos from = plan.world(box[0], box[1], box[2], new BlockPos.MutableBlockPos()).immutable();
+                BlockPos to = plan.world(box[3], box[4], box[5], new BlockPos.MutableBlockPos()).immutable();
+                String fill = "fill " + coordinates(from) + " " + coordinates(to) + " " + stateText(wanted)
+                        + (replace ? " replace" : " keep");
+                if (fill.length() <= MAX_COMMAND) {
+                    markSent(box);
+                    return fill;
+                }
             }
         }
-        verifiedBlocks = verifyCursor >= schematic.volume();
+        String command = "setblock " + coordinates(at) + " " + stateText(wanted)
+                + (replace || !actual.isAir() ? " replace" : " keep");
+        if (!replace && !actual.isAir()) {
+            // The server must still see exactly the replaceable block inspected here.
+            command = "execute if block " + coordinates(at) + " " + stateText(actual) + " run " + command;
+        }
+        if (command.length() > MAX_COMMAND) {
+            return null;
+        }
+        sent.set(index);
+        everSent.set(index);
+        // Written before the command goes, so contents still follow if the game stops straight after.
+        if (plan.hasBlockEntityData(index) && !journal.record(blockId(index), PrintJournal.Step.PLACED)
+                && !journalWarned) {
+            journalWarned = true;
+            SimpleSchematics.LOG.warn("Could not save Creative print history; an interrupted paste may leave containers empty");
+        }
+        return command;
     }
-    private boolean survives(Target target) {
+
+    private boolean joins(int other, int palette, BlockState wanted) {
+        if (sent.get(other) || abandoned.get(other) || plan.paletteOf(other) != palette || plan.accepted(other)) {
+            return false;
+        }
+        plan.world(other, probe);
+        if (!PrintPlan.inWorld(level, probe) || !level.hasChunkAt(probe)) {
+            return false;
+        }
+        BlockState actual = level.getBlockState(probe);
+        boolean clear = replace
+                ? !PrintPlacement.matches(wanted, actual)
+                        && !(actual.hasBlockEntity() && PrintPlacement.isPartial(wanted, actual))
+                : actual.isAir();
+        return clear && !plan.isBank(level, probe) && survives(wanted, probe);
+    }
+
+    private void markSent(int[] box) {
+        for (int y = box[1]; y <= box[4]; y++) {
+            for (int z = box[2]; z <= box[5]; z++) {
+                for (int x = box[0]; x <= box[3]; x++) {
+                    int index = schematic.index(x, y, z);
+                    sent.set(index);
+                    everSent.set(index);
+                }
+            }
+        }
+    }
+
+    private boolean survives(BlockState state, BlockPos at) {
         try {
-            return target.state.canSurvive(level, target.world)
-                    && (!(target.state.getBlock() instanceof FallingBlock)
-                        || !FallingBlock.isFree(level.getBlockState(target.world.below())));
+            return state.canSurvive(level, at)
+                    && (!(state.getBlock() instanceof FallingBlock) || !FallingBlock.isFree(level.getBlockState(at.below())));
         } catch (RuntimeException e) {
             return false;
         }
     }
 
-    private void acknowledgeBlocks() {
-        var iterator = pending.iterator();
-        while (iterator.hasNext()) {
-            Pending sent = iterator.next();
-            boolean ready = true;
-            for (Target target : sent.targets) {
-                if (!valid(target.world)) return;
-                if (!PrintPlacement.matches(target.state, level.getBlockState(target.world))) {
-                    ready = false;
-                    if (tick - sent.sentAt > ACK_TICKS) {
-                        fail(Status.BLOCKED, "The server did not confirm a block at " + target.world.toShortString()
-                                + ". Check permissions, protection rules and block support before continuing.");
+    private static void send(Minecraft mc, String command) {
+        PrintChat.expect();
+        mc.getConnection().sendCommand(command);
+    }
+
+    /**
+     * Asks the server something it answers in order with the commands before
+     * it. When the answer comes back, everything sent so far has been done, and
+     * a few ticks later the client has been told about the blocks.
+     */
+    private void sendBarrier(Minecraft mc) {
+        long token = ++barrierToken;
+        barrierAnswered = false;
+        barrierSentAt = tick;
+        mc.getConnection().getDebugQueryHandler().queryBlockEntityTag(mc.player.blockPosition(), tag -> {
+            if (token == barrierToken && !barrierAnswered) {
+                barrierAnswered = true;
+                barrierAnsweredAt = tick;
+            }
+        });
+    }
+
+    private boolean barrierPassed(Minecraft mc) {
+        if (barrierAnswered) {
+            return tick - barrierAnsweredAt >= 3;
+        }
+        return tick - barrierSentAt > ACK_TICKS + PrintInventory.responseTicks(mc);
+    }
+
+    // ---- checking ---------------------------------------------------------
+
+    private void startVerify(boolean abandon) {
+        stage = Stage.VERIFY;
+        abandoning = abandon;
+        verifyCursor = 0;
+        verifyLeft = 0;
+        verifyUnloaded = 0;
+        verifyAttention = 0;
+    }
+
+    private void verify() {
+        long deadline = System.nanoTime() + VERIFY_BUDGET_NANOS;
+        while (verifyCursor < plan.size()) {
+            if ((verifyCursor & 255) == 0 && System.nanoTime() > deadline) {
+                return;
+            }
+            int index = plan.target(verifyCursor++);
+            if (plan.accepted(index)) {
+                continue;
+            }
+            BlockState wanted = plan.wanted(index);
+            plan.world(index, pos);
+            if (!PrintPlan.inWorld(level, pos)) {
+                verifyAttention++;
+                continue;
+            }
+            if (!level.hasChunkAt(pos)) {
+                verifyUnloaded++;
+                continue;
+            }
+            BlockState actual = level.getBlockState(pos);
+            if (PrintPlacement.matches(wanted, actual)) {
+                if (everSent.get(index)) {
+                    placedHere.set(index);
+                }
+                if (plan.hasBlockEntityData(index) && !queued.get(index)) {
+                    queueBlockData(index, wanted);
+                }
+                continue;
+            }
+            if (abandoned.get(index) || plan.isBank(level, pos)
+                    || (!replace && !actual.canBeReplaced() && !PrintPlacement.isPartial(wanted, actual))) {
+                verifyAttention++;
+                continue;
+            }
+            if (abandoning) {
+                abandoned.set(index);
+                verifyAttention++;
+                continue;
+            }
+            verifyLeft++;
+        }
+        left = verifyLeft;
+        unloaded = verifyUnloaded;
+        attention = verifyAttention;
+        // Progress is either fewer blocks left or more of ours standing, since a
+        // chunk loading in can add blocks to the count while others go in.
+        int placedNow = placed();
+        boolean progress = left < lastLeft || placedNow > lastPlaced;
+        lastLeft = Math.min(lastLeft, left);
+        lastPlaced = placedNow;
+        if (progress) {
+            stuck = 0;
+        }
+        if (left > 0) {
+            if (!progress && ++stuck >= STUCK_WAVES) {
+                // Several waves have gone by without another block going in.
+                // Whatever is left is marked for the player on one more pass.
+                startVerify(true);
+                return;
+            }
+            newWave();
+            return;
+        }
+        if (unloaded > 0) {
+            stage = Stage.WAIT;
+            waitUntil = tick + WAIT_TICKS;
+            return;
+        }
+        stage = Stage.DATA;
+        refusedBeforeData = PrintChat.refused();
+    }
+
+    // ---- saved data -------------------------------------------------------
+
+    private UUID blockId(int index) {
+        return UUID.nameUUIDFromBytes((signature + "/block/" + index).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private UUID entityId(int index) {
+        return UUID.nameUUIDFromBytes((signature + "/" + index).getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * A container this paste placed, now or before it was interrupted. One it
+     * found already standing is never touched, so nothing the player has put
+     * in a chest of their own is overwritten.
+     */
+    private void queueBlockData(int index, BlockState wanted) {
+        UUID id = blockId(index);
+        if (!everSent.get(index) && journal.step(id) != PrintJournal.Step.PLACED) {
+            return;
+        }
+        queued.set(index);
+        CompoundTag original = schematic.blockEntities().get(
+                new BlockPos(plan.localX(index), plan.localY(index), plan.localZ(index)));
+        if (original == null) {
+            return;
+        }
+        CompoundTag tag = original.copy();
+        omitted += sanitise(tag, 0);
+        tag.remove("id");
+        tag.remove("x");
+        tag.remove("y");
+        tag.remove("z");
+        if (!contents) stripContents(tag);
+        if (!entities) tag.remove("Bees");
+        BlockPos world = pos.immutable();
+        enqueue(new Payload("block " + coordinates(world), tag, world, wanted, null, id));
+    }
+
+    private void enqueue(Payload payload) {
+        if (payload.tag.isEmpty()) {
+            journal.record(payload.journalId, PrintJournal.Step.DONE);
+            return;
+        }
+        // Leave ample space below the vanilla NBT packet limit, including its item wrapper.
+        if (payload.tag.sizeInBytes() > 1_048_576 || payload.tag.sizeInBytes() < 0) {
+            omitted++;
+            journal.record(payload.journalId, PrintJournal.Step.DONE);
+            return;
+        }
+        data.add(payload);
+    }
+
+    private void tickData(Minecraft mc) {
+        if (pendingPayload != null) {
+            if (tick - payloadSentAt > ACK_TICKS) {
+                omitted++;
+                journal.record(pendingPayload.journalId, PrintJournal.Step.DONE);
+                pendingPayload = null;
+            }
+            return;
+        }
+        int sends = 0;
+        while (sends < payloadsPerTick) {
+            if (!data.isEmpty()) {
+                if (sendPayload(mc, data.removeFirst())) {
+                    sends++;
+                    if (!instant) {
                         return;
                     }
                 }
+                continue;
             }
-            if (!ready) continue;
-            iterator.remove();
-            placed += sent.targets.size();
-            for (Target target : sent.targets) {
-                CompoundTag original = schematic.blockEntities().get(target.local);
-                if (original == null) continue;
-                CompoundTag tag = original.copy();
-                skipped += sanitise(tag, 0);
-                tag.remove("id");
-                tag.remove("x");
-                tag.remove("y");
-                tag.remove("z");
-                if (!contents) stripContents(tag);
-                if (!entities) tag.remove("Bees");
-                enqueueFields("block " + coordinates(target.world), tag, target);
+            Step step = entities ? entityStep(mc) : Step.NOTHING_LEFT;
+            if (step == Step.SENT) {
+                sends++;
+                if (!instant) {
+                    return;
+                }
+                continue;
             }
+            if (step == Step.WAITING) {
+                return;
+            }
+            break;
         }
+        if (sends > 0 || !data.isEmpty()) {
+            return;
+        }
+        if (!finalBarrier) {
+            finalBarrier = true;
+            sendBarrier(mc);
+            return;
+        }
+        if (!barrierPassed(mc)) {
+            return;
+        }
+        journal.recordAll(doneAfterBarrier, PrintJournal.Step.DONE);
+        doneAfterBarrier.clear();
+        stage = Stage.DONE;
+        status = Status.COMPLETE;
     }
 
-    private boolean tickEntities() {
+    private Step entityStep(Minecraft mc) {
         if (pendingEntity != null) {
-            boolean found = false;
-            for (Entity entity : level.entitiesForRendering()) {
-                if (pendingEntity.equals(entity.getUUID())) {
-                    found = true;
-                    break;
-                }
+            // Checked against the server's copy, so it has to be here first.
+            if (findEntity(pendingEntity) != null) {
+                enqueue(new Payload("entity " + pendingEntity, pendingEntityData, null, null, pendingEntity, pendingEntity));
+                pendingEntity = null;
+                pendingEntityData = null;
+                return Step.SENT;
             }
-            if (!found) {
-                if (tick - entitySentAt > ACK_TICKS) {
-                    fail(Status.BLOCKED, "The server did not confirm a saved entity. Its attempt was recorded to prevent duplicate entities when continuing.");
-                }
-                return false;
+            if (tick - entitySentAt > ACK_TICKS) {
+                // Its attempt stays in the journal, so continuing never summons it twice.
+                omitted++;
+                pendingEntity = null;
+                pendingEntityData = null;
             }
-            enqueueFields("entity " + pendingEntity, pendingEntityData, null);
-            pendingEntity = null;
-            pendingEntityData = null;
-            return false;
+            return Step.WAITING;
         }
-        if (entityCursor >= schematic.entities().size()) return true;
-        int index = entityCursor++;
+        if (entityQueue.isEmpty() && !entityLater.isEmpty() && tick >= entityRetryAt) {
+            entityQueue.addAll(entityLater);
+            entityLater.clear();
+        }
+        while (!entityQueue.isEmpty()) {
+            int index = entityQueue.poll();
+            Step step = entity(mc, index);
+            if (step != Step.NOTHING_LEFT) {
+                return step;
+            }
+        }
+        if (!entityLater.isEmpty()) {
+            entityRetryAt = Math.max(entityRetryAt, tick + WAIT_TICKS);
+            return Step.WAITING;
+        }
+        return Step.NOTHING_LEFT;
+    }
+
+    /** @return SENT if something went to the server, NOTHING_LEFT if this entity needs nothing more */
+    private Step entity(Minecraft mc, int index) {
         CompoundTag original = schematic.entities().get(index);
         ResourceLocation id = ResourceLocation.tryParse(original.getString("id"));
         ListTag positions = original.getList("Pos", Tag.TAG_DOUBLE);
         if (id == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(id) || positions.size() != 3
                 || id.toString().equals("minecraft:player")) {
-            skipped++;
-            return false;
+            omitted++;
+            return Step.NOTHING_LEFT;
         }
         Vec3 local = new Vec3(positions.getDouble(0), positions.getDouble(1), positions.getDouble(2));
         if (!Double.isFinite(local.x) || !Double.isFinite(local.y) || !Double.isFinite(local.z)
                 || local.x < 0 || local.x > schematic.width() || local.y < 0 || local.y > schematic.height()
                 || local.z < 0 || local.z > schematic.length()) {
-            skipped++;
-            return false;
+            omitted++;
+            return Step.NOTHING_LEFT;
         }
-        Vec3 world = toWorld(local);
-        if (!valid(BlockPos.containing(world))) return false;
-        UUID uuid = UUID.nameUUIDFromBytes((signature + "/" + index).getBytes(StandardCharsets.UTF_8));
-        if (attemptedEntities.contains(uuid.toString())) {
-            skipped++;
-            return false;
+        Vec3 world = transformPoint(schematic, plan.placement.origin(), plan.placement.mirror(),
+                plan.placement.rotation(), local);
+        BlockPos at = BlockPos.containing(world);
+        if (!PrintPlan.inWorld(level, at)) {
+            omitted++;
+            return Step.NOTHING_LEFT;
         }
-        CompoundTag tag = original.copy();
-        skipped += sanitise(tag, 0);
-        if (tag.contains("Passengers")) {
-            // Captures also enumerate the passengers separately. Their original riding
-            // graph cannot safely be restored through short chat command packets.
-            tag.remove("Passengers");
-            skipped++;
+        if (!level.hasChunkAt(at)) {
+            entityLater.add(index);
+            return Step.NOTHING_LEFT;
         }
-        tag.remove("id");
-        tag.remove("UUID");
-        tag.remove("UUIDMost");
-        tag.remove("UUIDLeast");
-        tag.remove("Pos");
-        tag.remove("Motion");
-        tag.remove("Leash");
-        tag.remove("SleepingX");
-        tag.remove("SleepingY");
-        tag.remove("SleepingZ");
-        tag.remove("Brain");
-        tag.remove("HomePosX");
-        tag.remove("HomePosY");
-        tag.remove("HomePosZ");
-        if (!contents) stripContents(tag);
-        transformEntityData(tag, id, world, mirror, rotation);
+        UUID uuid = entityId(index);
+        PrintJournal.Step done = journal.step(uuid);
+        if (done == PrintJournal.Step.DONE) {
+            return Step.NOTHING_LEFT;
+        }
+        CompoundTag tag = entityData(original, id, world);
+        if (done != null) {
+            // Summoned before the paste was interrupted. Its data is finished off
+            // if it is here; if not, it was removed, and is never summoned again.
+            if (findEntity(uuid) != null) {
+                enqueue(new Payload("entity " + uuid, tag, null, null, uuid, uuid));
+                return Step.SENT;
+            }
+            omitted++;
+            return Step.NOTHING_LEFT;
+        }
         CompoundTag spawn = new CompoundTag();
         spawn.putUUID("UUID", uuid);
         // Hanging entities need their transformed anchor during construction.
@@ -394,50 +691,76 @@ public final class CreativePrinter {
         String command = "execute unless entity " + uuid + " run summon " + id + " "
                 + decimal(world.x) + " " + decimal(world.y) + " " + decimal(world.z) + " " + spawn;
         if (command.length() > MAX_COMMAND) {
-            // The durable attempt journal and fresh deterministic UUID still prevent
-            // retries when the guarded form leaves no room for a hanging anchor.
-            command = "summon " + id + " "
-                    + decimal(world.x) + " " + decimal(world.y) + " " + decimal(world.z) + " " + spawn;
+            // The journal and the fresh deterministic UUID still prevent retries
+            // when the guarded form leaves no room for a hanging anchor.
+            command = "summon " + id + " " + decimal(world.x) + " " + decimal(world.y) + " " + decimal(world.z) + " " + spawn;
         }
         if (command.length() > MAX_COMMAND) {
-            skipped++;
-            return false;
+            omitted++;
+            return Step.NOTHING_LEFT;
         }
-        if (!recordEntityAttempt(uuid)) {
-            fail(Status.BLOCKED, "Entity printing could not save its resume history. Check the mod's data folder permissions.");
-            return false;
+        if (!journal.record(uuid, PrintJournal.Step.ATTEMPTED)) {
+            // Without a record, continuing could summon it again.
+            omitted++;
+            if (!journalWarned) {
+                journalWarned = true;
+                SimpleSchematics.LOG.warn("Could not save Creative print history; saved entities are being left out");
+            }
+            return Step.NOTHING_LEFT;
         }
-        Minecraft.getInstance().getConnection().sendCommand(command);
-        pendingEntity = uuid;
-        pendingEntityData = tag;
-        entitySentAt = tick;
-        return false;
+        send(mc, command);
+        if (instant) {
+            // The server takes the data straight after the summon, in order.
+            enqueue(new Payload("entity " + uuid, tag, null, null, uuid, uuid));
+        } else {
+            pendingEntity = uuid;
+            pendingEntityData = tag;
+            entitySentAt = tick;
+        }
+        return Step.SENT;
     }
 
-    private void enqueueFields(String target, CompoundTag tag, Target block) {
-        if (tag.isEmpty()) return;
-        // Leave ample space below the vanilla NBT packet limit, including its item wrapper.
-        if (tag.sizeInBytes() > 1_048_576 || tag.sizeInBytes() < 0) {
-            skipped++;
-            return;
+    private CompoundTag entityData(CompoundTag original, ResourceLocation id, Vec3 world) {
+        CompoundTag tag = original.copy();
+        omitted += sanitise(tag, 0);
+        if (tag.contains("Passengers")) {
+            // Captures also enumerate the passengers separately. Their original riding
+            // graph cannot safely be restored through short chat command packets.
+            tag.remove("Passengers");
+            omitted++;
         }
-        data.add(new Payload(target, tag, block, block == null ? UUID.fromString(target.substring(7)) : null));
+        for (String key : List.of("id", "UUID", "UUIDMost", "UUIDLeast", "Pos", "Motion", "Leash",
+                "SleepingX", "SleepingY", "SleepingZ", "Brain", "HomePosX", "HomePosY", "HomePosZ")) {
+            tag.remove(key);
+        }
+        if (!contents) stripContents(tag);
+        transformEntityData(tag, id, world, plan.placement.mirror(), plan.placement.rotation());
+        return tag;
     }
 
-    private void sendPayload(Minecraft mc, Payload payload) {
-        if (payload.block != null && (!valid(payload.block.world)
-                || !PrintPlacement.matches(payload.block.state, level.getBlockState(payload.block.world)))) {
-            if (status == Status.RUNNING) fail(Status.BLOCKED, "A container changed before its saved data could be copied.");
-            return;
+    private Entity findEntity(UUID uuid) {
+        for (Entity entity : level.entitiesForRendering()) {
+            if (uuid.equals(entity.getUUID())) {
+                return entity;
+            }
+        }
+        return null;
+    }
+
+    /** @return false if the payload no longer has anywhere to go */
+    private boolean sendPayload(Minecraft mc, Payload payload) {
+        if (payload.block != null && (!level.hasChunkAt(payload.block)
+                || !PrintPlacement.matches(payload.state, level.getBlockState(payload.block)))) {
+            // Changed since it was placed. Left as it is; the journal still offers it next time.
+            omitted++;
+            return false;
         }
         Entity entity = null;
-        if (payload.entity != null) {
-            for (Entity candidate : level.entitiesForRendering()) {
-                if (payload.entity.equals(candidate.getUUID())) { entity = candidate; break; }
-            }
+        if (payload.entity != null && !instant) {
+            entity = findEntity(payload.entity);
             if (entity == null) {
-                fail(Status.BLOCKED, "A saved entity left the loaded area before its data could be copied.");
-                return;
+                omitted++;
+                return false;
             }
         }
         ItemStack previous = mc.player.getOffhandItem().copy();
@@ -445,6 +768,7 @@ public final class CreativePrinter {
         carrier.getOrCreateTag().put("ss_print", payload.tag.copy());
         // Packet ordering makes this one atomic data transfer followed by restoration.
         // The carrier avoids chat's 256-character ceiling for long text and inventories.
+        PrintChat.expect();
         mc.gameMode.handleCreativeModeItemAdd(carrier, 45);
         try {
             mc.getConnection().sendCommand("data modify " + payload.target
@@ -452,19 +776,24 @@ public final class CreativePrinter {
         } finally {
             mc.gameMode.handleCreativeModeItemAdd(previous, 45);
         }
+        if (instant) {
+            doneAfterBarrier.add(payload.journalId);
+            return true;
+        }
         pendingPayload = payload;
         payloadSentAt = tick;
-        java.util.function.Consumer<CompoundTag> reply = actual -> {
+        Consumer<CompoundTag> reply = actual -> {
             if (status != Status.RUNNING || pendingPayload != payload) return;
             pendingPayload = null;
-            CompoundTag expected = verificationPayload(payload.tag);
-            if (actual == null || !NbtUtils.compareNbt(expected, actual, true)) {
-                fail(Status.BLOCKED, "The server did not apply all saved container or entity data. Check protection rules before continuing.");
+            if (actual == null || !NbtUtils.compareNbt(verificationPayload(payload.tag), actual, true)) {
+                omitted++;
             }
+            journal.record(payload.journalId, PrintJournal.Step.DONE);
         };
         // DebugQueryHandler has one callback slot, so only one payload is in flight.
-        if (payload.block != null) mc.getConnection().getDebugQueryHandler().queryBlockEntityTag(payload.block.world, reply);
+        if (payload.block != null) mc.getConnection().getDebugQueryHandler().queryBlockEntityTag(payload.block, reply);
         else mc.getConnection().getDebugQueryHandler().queryEntityTag(entity.getId(), reply);
+        return true;
     }
 
     private static CompoundTag verificationPayload(CompoundTag tag) {
@@ -475,20 +804,6 @@ public final class CreativePrinter {
                 "LastUpdate", "LastUpdateTime", "TicksSincePollination", "FlowerPos", "HivePos")) expected.remove(key);
         return expected;
     }
-    private boolean recordEntityAttempt(UUID uuid) {
-        if (!journalReadable) return false;
-        try {
-            Files.createDirectories(entityJournal.getParent());
-            Files.writeString(entityJournal, uuid + System.lineSeparator(), StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-            attemptedEntities.add(uuid.toString());
-            return true;
-        } catch (IOException e) {
-            SimpleSchematics.LOG.warn("Could not save Creative print entity history", e);
-            return false;
-        }
-    }
-
     static void transformEntityData(CompoundTag tag, ResourceLocation id, Vec3 world, Mirror mirror, Rotation rotation) {
         ListTag angles = tag.getList("Rotation", Tag.TAG_FLOAT);
         if (angles.size() == 2) {
@@ -571,10 +886,6 @@ public final class CreativePrinter {
         if (mirror == Mirror.LEFT_RIGHT && direction.getAxis() == Direction.Axis.Z) direction = direction.getOpposite();
         if (mirror == Mirror.FRONT_BACK && direction.getAxis() == Direction.Axis.X) direction = direction.getOpposite();
         return rotation.rotate(direction);
-    }
-
-    private Vec3 toWorld(Vec3 local) {
-        return transformPoint(schematic, origin, mirror, rotation, local);
     }
 
     static Vec3 transformPoint(Schematic schematic, BlockPos origin, Mirror mirror, Rotation rotation, Vec3 local) {
@@ -662,16 +973,6 @@ public final class CreativePrinter {
                 "HandItems", "ArmorItems", "SaddleItem", "ArmorItem", "DecorItem")) tag.remove(key);
     }
 
-    private boolean valid(BlockPos pos) {
-        if (level == null || level.isOutsideBuildHeight(pos) || !level.getWorldBorder().isWithinBounds(pos)
-                || !level.hasChunkAt(pos)) {
-            fail(Status.BLOCKED, "The build leaves the world border, build height or loaded chunks. Move closer and continue Print.");
-            return false;
-        }
-        return true;
-    }
-
-    private void fail(Status result, String message) { status = result; detail = message; }
     private static String coordinates(BlockPos pos) { return pos.getX() + " " + pos.getY() + " " + pos.getZ(); }
     private static String decimal(double value) { return java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString(); }
     private static String stateText(BlockState state) {
@@ -691,7 +992,6 @@ public final class CreativePrinter {
     private static <T extends Comparable<T>> void appendProperty(StringBuilder text, BlockState state, Property<T> property) {
         text.append(property.getName()).append('=').append(property.getName(state.getValue(property)));
     }
-    private record Target(BlockPos local, BlockPos world, BlockState state) { }
-    private record Pending(List<Target> targets, int sentAt) { }
-    private record Payload(String target, CompoundTag tag, Target block, UUID entity) { }
+    private record Payload(String target, CompoundTag tag, BlockPos block, BlockState state, UUID entity, UUID journalId) {
+    }
 }

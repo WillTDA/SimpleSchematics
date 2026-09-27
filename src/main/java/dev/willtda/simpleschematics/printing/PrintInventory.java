@@ -24,6 +24,14 @@ import java.util.*;
 
 /** Normal menu clicks only: cached chest counts never create spendable materials. */
 final class PrintInventory {
+    /**
+     * A container the printer asked for just before it stopped. The server
+     * still opens it a moment later, and it has to be shut again rather than
+     * left on the player's screen with nothing driving it.
+     */
+    private static BlockPos orphan;
+    private static long orphanUntil;
+
     final ResourceBudget<Item> budget;
     private final Set<BlockPos> visited = new HashSet<>();
     private BlockPos opening;
@@ -196,10 +204,46 @@ final class PrintInventory {
     }
 
     void close(Minecraft mc) {
-        if (mc.player != null && ownsScreen(mc)) mc.player.closeContainer();
+        if (mc.player != null && ownsScreen(mc)) {
+            mc.player.closeContainer();
+        } else if (opening != null && mc.player != null) {
+            orphan = opening;
+            orphanUntil = System.currentTimeMillis() + responseTicks(mc) * 50L * 2;
+        }
         opening = null;
         ownedMenu = null;
         transferring = null;
+    }
+
+    /**
+     * Gives up on a container that has not opened yet, without touching the
+     * screen the player has just opened in front of it.
+     */
+    void abandon() {
+        opening = null;
+        ownedMenu = null;
+        transferring = null;
+    }
+
+    /** Shuts a container that arrives after printing stopped. Runs whether printing or not. */
+    static void tickOrphan(Minecraft mc) {
+        if (orphan == null) return;
+        if (System.currentTimeMillis() > orphanUntil || mc.player == null || mc.level == null) {
+            orphan = null;
+            return;
+        }
+        BlockPos last = InputHandler.lastUsedBlock();
+        if (last != null && !Banks.canonical(mc.level, orphan).equals(Banks.canonical(mc.level, last))) {
+            // The player has clicked something of their own since, which is theirs to keep open.
+            orphan = null;
+            return;
+        }
+        if (mc.player.containerMenu != mc.player.inventoryMenu && mc.screen instanceof AbstractContainerScreen<?>) {
+            mc.player.closeContainer();
+            orphan = null;
+        } else if (mc.screen == null) {
+            InputHandler.recordUsedBlock(orphan);
+        }
     }
 
     /** The caller restores the slot in a finally block after the use packet. */

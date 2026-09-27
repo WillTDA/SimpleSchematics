@@ -29,7 +29,7 @@ try {
     $compileArguments = @('--release', '17', '-proc:none', '-classpath', ('"' + $classpath + '"'), '-d',
         ('"' + $outputDirectory.Replace('\', '/') + '"'), 'scripts/PrintPlacementTest.java',
         'scripts/CreativePrintTest.java', 'scripts/PrintBudgetTest.java', 'scripts/PrintTestBootstrap.java',
-        'scripts/ConfigPersistenceTest.java')
+        'scripts/ConfigPersistenceTest.java', 'scripts/PrintPlanTest.java')
     $compileFile = Join-Path $outputDirectory 'compile.args'
     [System.IO.File]::WriteAllLines($compileFile, $compileArguments, $utf8)
     & $javaCompiler "@$compileFile"
@@ -38,7 +38,8 @@ try {
     try {
     foreach ($testClass in @('dev.willtda.simpleschematics.printing.PrintPlacementTest',
             'dev.willtda.simpleschematics.printing.CreativePrintTest', 'PrintBudgetTest',
-            'dev.willtda.simpleschematics.printing.ConfigPersistenceTest')) {
+            'dev.willtda.simpleschematics.printing.ConfigPersistenceTest',
+            'dev.willtda.simpleschematics.printing.PrintPlanTest')) {
         $runArguments = @('-classpath', ('"' + $outputDirectory.Replace('\', '/') + ';' + $classpath + '"'), $testClass)
         $runFile = Join-Path $outputDirectory 'run.args'
         [System.IO.File]::WriteAllLines($runFile, $runArguments, $utf8)

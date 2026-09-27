@@ -128,6 +128,32 @@ chords, so `InputHandler.onKey` matches them on the raw `InputEvent.Key`.
   `swapScanCorners` turns them round; the default has been this way since 1.0.0 and
   the lang strings for the "set both corners" errors follow it.
 
+## Print
+
+`PrintManager` owns the lifecycle (survey, the one confirmation, run, stop). `PrintPlan`
+lists the blocks once, `HandPrinter` places them by hand (Survival, and Creative without
+operator), `CreativePrinter` pastes through commands. `CuboidPlanner` and `PrintJournal`
+have no game types in them on purpose; keep it that way so they can move to a shared core.
+
+- **Nothing local stops a print.** A block in the way, an unloaded chunk or a block that
+  keeps failing is left for the player and counted; only lost permission, a moved
+  placement, a mode change or a run of server timeouts stops it. Screens hold it.
+- **The server runs commands and queries in the order they were sent.** The paste sends a
+  `DebugQueryHandler` block query after each wave as a barrier: when it answers, every
+  command before it has run. The handler has one callback slot, so only one query is ever
+  in flight, barrier or payload check.
+- **`setblock ... replace` and `fill ... replace` empty a container even when the state is
+  identical** (`Clearable.tryClear` runs first). Never resend a block-entity block the client
+  already sees placed, and never let a fill box cover one.
+- **Fill size is the `commandModificationBlockLimit` game rule**, 32768 by default and
+  invisible to a client. `PrintChat` learns a lower limit from `commands.fill.toobig`.
+- **A player with chat set to Hidden has every command refused** (`chat.disabled.options`).
+- **Non-operators are kicked for more than about ten commands in quick succession**; operators
+  are exempt. Paper's packet limiter defaults to about five hundred packets a second, which
+  is why remote Instant paste stays at sixteen commands a tick.
+- **Command replies are dropped by translation key**, only while a paste is sending and ten
+  seconds after. Add a key to `PrintChat` rather than widening the match.
+
 ## Screens
 
 Every coordinate comes from layout methods computed off the live window. Nothing is
