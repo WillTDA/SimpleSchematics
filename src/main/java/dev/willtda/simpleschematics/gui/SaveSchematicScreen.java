@@ -53,7 +53,7 @@ public final class SaveSchematicScreen extends Screen {
                 Component.translatable("simpleschematics.gui.save.description"));
         descriptionBox.setMaxLength(256);
         descriptionBox.setValue(previousDescription);
-        descriptionBox.setHint(Component.translatable("simpleschematics.gui.save.description_hint"));
+        descriptionBox.setHint(Screens.hint(Component.translatable("simpleschematics.gui.save.description_hint")));
         addRenderableWidget(descriptionBox);
 
         entitiesBox = Screens.checkbox(this.font, x, y + 92, width, 20,

@@ -33,6 +33,16 @@ public final class Screens {
         }
     }
 
+    /**
+     * Placeholder text for an edit box. The box draws a placeholder in its own
+     * text colour unless the text carries one, so without this it looked like
+     * something already typed. The grey is the one vanilla uses for an edit
+     * box's own suggestions.
+     */
+    public static Component hint(Component text) {
+        return text.copy().withStyle(style -> style.withColor(0x808080));
+    }
+
     /** A checkbox sitting in a row {@code height} tall, which on 1.21 is taller than the box. */
     public static Checkbox checkbox(Font font, int x, int y, int width, int height, Component label, boolean selected) {
         //? if >=1.21 {

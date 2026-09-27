@@ -185,7 +185,7 @@ public final class LibraryScreen extends Screen {
         String previousQuery = search == null ? "" : search.getValue();
         search = new EditBox(this.font, listX() + 1, searchY(), listWidth() - 2, searchHeight(),
                 Component.translatable("simpleschematics.gui.search"));
-        search.setHint(Component.translatable("simpleschematics.gui.search"));
+        search.setHint(Screens.hint(Component.translatable("simpleschematics.gui.search")));
         search.setValue(previousQuery);
         search.setResponder(value -> {
             scroll = 0;
