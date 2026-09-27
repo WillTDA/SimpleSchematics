@@ -16,16 +16,35 @@ default attribution instruction.
 ## Build and run
 
 ```bash
-./gradlew build          # jar lands in build/libs/
-./gradlew compileJava    # fast check while iterating
-./gradlew runClient      # launches the dev client, working dir is run/
+./gradlew build                        # every node; the Forge jar lands in versions/1.20.1-forge/build/libs/
+./gradlew :1.20.1-forge:compileJava    # fast check while iterating
+./gradlew :1.20.1-forge:runClient      # launches the dev client, working dir is run/
 ```
 
 Add `--offline` when dependencies are already cached; it is noticeably faster.
 
-Mod metadata lives in `gradle.properties` and is interpolated into
+**Gradle runs on Java 21**, because Stonecutter needs it; each node compiles with its own
+toolchain (Java 17 for Forge 1.20.1). ModDevGradle Legacy builds the Forge node and
+reobfuscates the jar to SRG: `build/libs/` holds the reobfuscated jar, `build/devlibs/`
+the Mojang-named one that only runs in development.
+
+**Stonecutter builds `src/` once per node** (`versions/<version>-<loader>/`, one Minecraft
+version and loader each), from `settings.gradle.kts`, `stonecutter.gradle.kts` and
+`build.<loader>.gradle.kts`. Code that differs between nodes is marked with comments such
+as `//? if neoforge {`. The files on disk are written for the active node,
+`1.20.1-forge`; run the **Reset active project** task before committing if you have
+switched. `docs/porting-plan.md` holds the plan and the decisions behind it.
+
+**Kotlin build scripts resolve names against the nearest receiver first.** Inside
+`legacyForge { }` or a task block, a script value named like one of the block's own
+properties (`minecraftVersion`, `version`) or a call like `property(...)` reaches the
+block, not the script. Read properties at the top of the script into distinctly named
+values.
+
+Mod metadata lives in `stonecutter.properties.toml` (loader and version specific values
+in their `[loader."version"]` sections) and is interpolated into
 `src/main/resources/META-INF/mods.toml` at build time. Do not hardcode the version or
-mod id in the toml.
+mod id in the toml. `gradle.properties` only holds Gradle's own options.
 
 **Only one dev client can run at a time.** The second one fails to take
 `run/logs/latest.log` and its output is useless. Before launching, check whether one is
@@ -49,7 +68,7 @@ Useful paths: `run/logs/latest.log`, `run/crash-reports/`, `run/config/simplesch
 | `util` | Data folder resolution, import and export |
 
 `scripts/` holds standalone checks that are compiled and run by hand, not part of the
-Gradle build.
+Gradle build. `:1.20.1-forge:writePrintTestClasspath` writes the classpath they need.
 
 ## Rendering traps
 

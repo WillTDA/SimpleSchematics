@@ -12,17 +12,19 @@ Litematica and its Forge ports do the job, but the everyday parts are awkward: s
 
 ## Building it
 
-You need a JDK 17 on your PATH. Then:
+Gradle needs a JDK 21 to run. The Forge 1.20.1 build itself compiles with Java 17, which Gradle uses if it is installed and downloads if it is not. Then:
 
 ```
 ./gradlew build
 ```
 
-The jar lands in `build/libs/`. Drop it in your `mods` folder.
+The jar lands in `versions/1.20.1-forge/build/libs/`. Drop it in your `mods` folder. `./gradlew dist` copies it into `dist/` as well.
 
-For a development client, run `./gradlew runClient`. On Windows, use `gradlew.bat build` or `gradlew.bat runClient`.
+For a development client, run `./gradlew :1.20.1-forge:runClient`. On Windows, use `gradlew.bat` in place of `./gradlew`.
 
-To run the regression checks, generate the current runtime classpath with `gradlew.bat --offline --init-script scripts/print_test_classpath.gradle writePrintTestClasspath` (or `./gradlew` on Linux and macOS), then run `scripts/check_print_placement.ps1` on Windows or `scripts/check_print_placement.sh` elsewhere, under Java 17, and `python scripts/check_print_ui.py`. These headless checks cover block states, material accounting, NBT, transforms, fill grouping, the resume journal, settings persistence and layout; gameplay and networking require an in-game check.
+The project is built with [Stonecutter](https://stonecutter.kikugie.dev/), so one source tree can be built for several Minecraft versions and loaders. Each version and loader is a node under `versions/`; today there is one, `1.20.1-forge`. `docs/porting-plan.md` explains the layout and the plan for NeoForge 1.21.1.
+
+To run the regression checks, write the current runtime classpath with `./gradlew :1.20.1-forge:writePrintTestClasspath`, then run `scripts/check_print_placement.ps1` on Windows or `scripts/check_print_placement.sh` elsewhere, under Java 17, and `python scripts/check_print_ui.py`. These headless checks cover block states, material accounting, NBT, transforms, fill grouping, the resume journal, settings persistence and layout; gameplay and networking require an in-game check.
 
 ## How you use it
 

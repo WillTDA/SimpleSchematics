@@ -1,7 +1,15 @@
 # Porting plan: one repository, NeoForge 1.21.1 now, Fabric later
 
-A proposal, not a change that has been made. Nothing has moved yet; the decisions at the end
-decide how the first step is done.
+Decided on 27 September 2026:
+
+- **Stonecutter** for versions and loaders, with the renderer split by era.
+- **Forge 1.20.1 and NeoForge 1.21.1** are the versions kept long term. Fabric and newer
+  Minecraft versions stay possible later and nothing here rules them out, but no work goes
+  into them until they are asked for.
+- **The mod's own config file** replaces `ForgeConfigSpec`, with existing settings imported once.
+- **Kotlin** build scripts.
+
+The rest of this page is the reasoning behind those choices and the order of work.
 
 ## Where the code stands
 
@@ -93,6 +101,22 @@ This answers the rename question: rather than a hand-kept `forge-1.20.1/` folder
 still rather have plain folders, the fallback is the MultiLoader layout with one branch per
 Minecraft version, not copies side by side.
 
+## Progress
+
+- **Phases 1 and 2 are done** (27 September 2026). The build is Stonecutter with Kotlin
+  scripts and ModDevGradle Legacy, one node `1.20.1-forge`. Every class in the new jar is
+  byte for byte the same as the ForgeGradle 6 jar; only the manifest gained Stonecutter's
+  attributes. The headless checks and a dev client smoke test (Creative paste and Survival
+  print) pass on it.
+- **The spike worked.** A scratch copy with a `1.21.1-neoforge` node (ModDevGradle 2.0.147,
+  NeoForge 21.1.251) set up Minecraft beside the Forge node in one build. The node is not
+  committed yet, because the shared source does not compile for it until the port is done.
+- **The size of the port, measured.** Compiling today's code against NeoForge 1.21.1 stops
+  at about 600 errors in 29 files, and more will surface once those resolve. The biggest
+  are `SSConfig` (164, which the own config file removes), `EntityBlockStandIn` (88) and
+  `BakedSchematic` (50) in the renderer, `SimpleSchematicsClient` (72) and `InputHandler`
+  (24) for events and startup, and `ConfigScreen` (24). Everything else is a handful each.
+
 ## Phases
 
 1. **Spike, a day or so.** An empty mod built by Stonecutter for `1.20.1-forge` (ModDevGradle
@@ -117,14 +141,13 @@ Minecraft version, not copies side by side.
    (Vulkan capable Blaze3D), 26.3 (SDL key constants). Each is mostly a new renderer and preview
    folder plus conditions.
 
-## Decisions needed
+## Decisions
 
-1. Stonecutter as above, or plain branches with the MultiLoader layout?
-2. Which versions to keep long term. Every renderer era is real work, so Forge 1.20.1,
-   NeoForge 1.21.1, Fabric 1.21.1 and the latest release is far cheaper than every version in
-   between.
-3. Replacing `ForgeConfigSpec` with the mod's own config file, settings carried over.
-4. Kotlin or Groovy build scripts. The Stonecutter templates are Kotlin.
+1. Stonecutter as above, not plain branches. **Decided: Stonecutter.**
+2. Versions kept long term. **Decided: Forge 1.20.1 and NeoForge 1.21.1.** Phases 5 and 6
+   wait until Fabric or a newer version is asked for.
+3. The mod's own config file in place of `ForgeConfigSpec`. **Decided: yes.**
+4. Kotlin or Groovy build scripts. **Decided: Kotlin.**
 
 ## Risks
 
