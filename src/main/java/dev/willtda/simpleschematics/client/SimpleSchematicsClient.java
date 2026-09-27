@@ -1,83 +1,54 @@
 package dev.willtda.simpleschematics.client;
 
 import dev.willtda.simpleschematics.SimpleSchematics;
-import dev.willtda.simpleschematics.config.ConfigScreen;
+import dev.willtda.simpleschematics.config.SSConfig;
 import dev.willtda.simpleschematics.gui.SchematicPreview;
 import dev.willtda.simpleschematics.placement.PlacementManager;
 import dev.willtda.simpleschematics.printing.PrintManager;
-import dev.willtda.simpleschematics.render.WorldRenderer;
-import dev.willtda.simpleschematics.render.HologramShader;
 import dev.willtda.simpleschematics.render.SchematicVerifier;
+import dev.willtda.simpleschematics.render.WorldRenderer;
 import dev.willtda.simpleschematics.resource.BuildListManager;
-import dev.willtda.simpleschematics.resource.BuildListOverlay;
 import dev.willtda.simpleschematics.resource.ResourceListManager;
-import dev.willtda.simpleschematics.resource.ResourceListOverlay;
 import dev.willtda.simpleschematics.schematic.SchematicLibrary;
-import net.minecraftforge.client.ConfigScreenHandler;
-import net.minecraftforge.client.event.RegisterGuiOverlaysEvent;
-import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
-import net.minecraftforge.client.event.RegisterClientReloadListenersEvent;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
-import net.minecraftforge.client.event.ScreenEvent;
-import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay;
-import net.minecraftforge.event.entity.player.PlayerEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.ModLoadingContext;
-import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
-import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
-import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
-import net.minecraftforge.common.MinecraftForge;
 
 /**
- * Client bootstrap. Registers the listeners, the keys, the overlay and the
- * Config button that appears next to the mod in the Mods list.
+ * What the client does when the game tells it something happened.
+ *
+ * <p>The loader's own events are listened to in {@code platform}, one class per
+ * loader, and each simply calls through to here or to the class that owns the
+ * behaviour. Nothing in this class knows which loader it is running on.</p>
  */
 public final class SimpleSchematicsClient {
+
+    private static int configCheck;
 
     private SimpleSchematicsClient() {
     }
 
-    public static void bootstrap() {
-        var modBus = FMLJavaModLoadingContext.get().getModEventBus();
-        modBus.addListener(SimpleSchematicsClient::onClientSetup);
-        modBus.addListener(SimpleSchematicsClient::onRegisterKeys);
-        modBus.addListener(SimpleSchematicsClient::onRegisterOverlays);
-        modBus.addListener(HologramShader::register);
-        modBus.addListener((RegisterClientReloadListenersEvent event) -> event.registerReloadListener(
-                (ResourceManagerReloadListener) manager -> {
-                    WorldRenderer.invalidateAll();
-                    SchematicPreview.clearThumbnails();
-                }));
-
-        MinecraftForge.EVENT_BUS.register(InputHandler.class);
-        MinecraftForge.EVENT_BUS.register(WorldRenderer.class);
-        MinecraftForge.EVENT_BUS.register(SimpleSchematicsClient.class);
-    }
-
-    private static void onClientSetup(FMLClientSetupEvent event) {
-        event.enqueueWork(() -> ModLoadingContext.get().registerExtensionPoint(
-                ConfigScreenHandler.ConfigScreenFactory.class,
-                () -> new ConfigScreenHandler.ConfigScreenFactory(
-                        (minecraft, parent) -> new ConfigScreen(parent))));
+    public static void onSetup() {
         SimpleSchematics.LOG.info("Simple Schematics is ready, client side only");
     }
 
-    private static void onRegisterKeys(RegisterKeyMappingsEvent event) {
-        Keybinds.register(event);
+    /** Once a client tick, at its end, whether or not a world is open. */
+    public static void onClientTick() {
+        // Forge's config watcher used to pick up a hand edit to the settings
+        // file while the game ran. Checking once a second keeps that.
+        if (++configCheck >= 20) {
+            configCheck = 0;
+            SSConfig.FILE.reloadIfChanged();
+        }
+        InputHandler.onClientTick();
     }
 
-    private static void onRegisterOverlays(RegisterGuiOverlaysEvent event) {
-        event.registerAbove(VanillaGuiOverlay.HOTBAR.id(), "resource_list", ResourceListOverlay.INSTANCE);
-        // After the resource list, so it can stack past it when they share a corner.
-        event.registerAbove(new ResourceLocation(SimpleSchematics.MOD_ID, "resource_list"), "build_list",
-                BuildListOverlay.INSTANCE);
+    /** Resource packs reloaded: baked geometry and previews hold old textures. */
+    public static void onResourcesReloaded() {
+        WorldRenderer.invalidateAll();
+        SchematicPreview.clearThumbnails();
     }
 
     // ---- world lifecycle --------------------------------------------------
 
-    @SubscribeEvent
-    public static void onJoin(ClientPlayerNetworkEvent.LoggingIn event) {
+    public static void onJoin() {
         PrintManager.INSTANCE.reset();
         SchematicLibrary.INSTANCE.refresh();
         PlacementManager.INSTANCE.onJoinWorld();
@@ -88,8 +59,7 @@ public final class SimpleSchematicsClient {
         ClientState.INSTANCE.cancelPending();
     }
 
-    @SubscribeEvent
-    public static void onLeave(ClientPlayerNetworkEvent.LoggingOut event) {
+    public static void onLeave() {
         PrintManager.INSTANCE.leaveWorld();
         ClientState.INSTANCE.flushMode();
         PlacementManager.INSTANCE.onLeaveWorld();
@@ -99,25 +69,15 @@ public final class SimpleSchematicsClient {
         ClientState.INSTANCE.reset();
     }
 
-    @SubscribeEvent
-    public static void onRespawn(ClientPlayerNetworkEvent.Clone event) {
+    /** Respawning or changing dimension rebuilds the level, so the baked geometry has to go. */
+    public static void onRespawn() {
         PrintManager.INSTANCE.reset();
-        // dimension changes rebuild the level, so the baked geometry has to go
         WorldRenderer.invalidateAll();
         SchematicVerifier.INSTANCE.clear();
     }
 
-    /**
-     * Dropping a .litematic, a .sschem or an exported zip onto any Simple
-     * Schematics screen brings it straight into your library.
-     */
-    @SubscribeEvent
-    public static void onScreenOpen(ScreenEvent.Opening event) {
-        // nothing to do yet, kept so the listener list stays in one place
-    }
-
-    @SubscribeEvent
-    public static void onItemPickup(PlayerEvent.ItemPickupEvent event) {
+    /** The player picked something up, so the resource list may already be out of date. */
+    public static void onItemPickup() {
         if (ClientState.INSTANCE.resourceListVisible()) {
             ResourceListManager.INSTANCE.refreshNow();
         }

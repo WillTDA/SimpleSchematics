@@ -1,6 +1,7 @@
 package dev.willtda.simpleschematics.printing;
 
 import dev.willtda.simpleschematics.config.SSConfig;
+import dev.willtda.simpleschematics.platform.Platform;
 import dev.willtda.simpleschematics.resource.MaterialResolver;
 import dev.willtda.simpleschematics.schematic.Schematic;
 import net.minecraft.client.Minecraft;
@@ -213,7 +214,7 @@ final class HandPrinter {
         Schematic schematic = plan.schematic;
         ClientLevel level = mc.level;
         Vec3 eye = plan.placement.toLocalPoint(schematic, mc.player.getEyePosition());
-        double reach = mc.player.getBlockReach();
+        double reach = Platform.blockReach(mc.player);
         // Generous: the placement search checks the true reach to every face.
         double reachSq = (reach + 1) * (reach + 1);
         int x0 = Math.max(0, Mth.floor(eye.x - reach - 1));

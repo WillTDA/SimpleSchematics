@@ -54,6 +54,17 @@ legacyForge {
     }
 }
 
+// Accessor mixins stand in for reflection by SRG name. The annotation processor
+// writes the refmap that maps their Mojang names to SRG in the reobfuscated jar.
+mixin {
+    add(sourceSets.main.get(), "$modId.refmap.json")
+    config("$modId.mixins.json")
+}
+
+dependencies {
+    annotationProcessor("org.spongepowered:mixin:0.8.5:processor")
+}
+
 tasks.processResources {
     val replacements = mapOf(
         "mod_id" to modId,
@@ -80,6 +91,7 @@ tasks.jar {
             "Implementation-Version" to project.version,
             "Implementation-Vendor" to modAuthors,
             "Implementation-Timestamp" to SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ").format(Date()),
+            "MixinConfigs" to "$modId.mixins.json",
         )
     }
     from(rootProject.file("LICENSE")) { into("META-INF") }

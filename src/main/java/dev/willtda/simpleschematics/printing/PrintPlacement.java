@@ -1,6 +1,8 @@
 package dev.willtda.simpleschematics.printing;
 
 import dev.willtda.simpleschematics.SimpleSchematics;
+import dev.willtda.simpleschematics.mixin.BlockItemInvoker;
+import dev.willtda.simpleschematics.platform.Platform;
 import dev.willtda.simpleschematics.render.SchematicVerifier;
 import dev.willtda.simpleschematics.resource.MaterialResolver;
 import net.minecraft.client.Minecraft;
@@ -36,10 +38,8 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
-import net.minecraftforge.fml.util.ObfuscationReflectionHelper;
 
 import javax.annotation.Nullable;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -55,11 +55,6 @@ public final class PrintPlacement {
             BlockStateProperties.EGGS, BlockStateProperties.LAYERS);
     private static final double[] HIT_OFFSETS = {0.5, 0.25, 0.75};
     private static final Set<Class<?>> FAILED_ITEMS = new HashSet<>();
-    // Resolving the protected hook needs Forge's mapping service, unlike state comparisons.
-    private static final class PlacementAccess {
-        private static final Method METHOD = ObfuscationReflectionHelper.findMethod(
-                BlockItem.class, "m_5965_", BlockPlaceContext.class);
-    }
 
     private PrintPlacement() {
     }
@@ -129,7 +124,7 @@ public final class PrintPlacement {
                     try {
                         BlockPlaceContext updated = item.updatePlacementContext(context);
                         if (updated == null || !updated.getClickedPos().equals(pos)) continue;
-                        BlockState predicted = (BlockState) PlacementAccess.METHOD.invoke(item, updated);
+                        BlockState predicted = ((BlockItemInvoker) item).simpleschematics$placementState(updated);
                         if (predicted == null || predicted.equals(actual)
                                 || !(matches(wanted, predicted) || isPartial(wanted, predicted))
                                 || !predicted.canSurvive(mc.level, pos)
@@ -138,7 +133,7 @@ public final class PrintPlacement {
                             continue;
                         }
                         return new Attempt(hit, yaw, pitch, sneak);
-                    } catch (ReflectiveOperationException | RuntimeException exception) {
+                    } catch (RuntimeException exception) {
                         if (FAILED_ITEMS.add(item.getClass())) {
                             SimpleSchematics.LOG.warn("Cannot predict print placement for {}", item, exception);
                         }
@@ -270,7 +265,7 @@ public final class PrintPlacement {
         if (shape.isEmpty()) return;
         AABB bounds = shape.bounds();
         Vec3 eye = mc.player.getEyePosition();
-        double reach = mc.player.getBlockReach();
+        double reach = Platform.blockReach(mc.player);
         for (double first : HIT_OFFSETS) {
             for (double second : HIT_OFFSETS) {
                 double x = face.getAxis() == Direction.Axis.X

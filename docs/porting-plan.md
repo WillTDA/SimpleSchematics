@@ -117,6 +117,21 @@ Minecraft version, not copies side by side.
   `BakedSchematic` (50) in the renderer, `SimpleSchematicsClient` (72) and `InputHandler`
   (24) for events and startup, and `ConfigScreen` (24). Everything else is a handful each.
 
+- **Phase 3, the seams, is done** (27 September 2026), still shipping as Forge 1.20.1 only.
+  Settings are the mod's own `ConfigFile`, which reads and writes the same
+  `simpleschematics-client.toml` Forge wrote; a Forge-written copy round trips byte for byte.
+  Every Forge event and registration lives in `platform/forge/ForgeClient`, which only calls
+  shared methods, and the few loader services shared code needs sit in `platform/Platform`.
+  The three reflection lookups by SRG name are Mixin accessors. A dev client drove each path
+  through Forge's own hooks (a key press, a use click, scrolling, chat, screens, a Creative
+  paste and a Survival print) and a dedicated server started with the mod and loaded no
+  client classes. The pure Java `core` subproject and the renderer interfaces wait for the
+  port itself, where they will be shaped by what the second node actually needs.
+- **The port after the seams.** Against NeoForge 1.21.1 the same code now stops at 338
+  errors. 132 are in the three `platform` files, which get a NeoForge sibling rather than
+  edits. Of the other 206, 138 are the renderer, `EntityBlockStandIn` (88) and
+  `BakedSchematic` (50); every other file has a handful.
+
 ## Phases
 
 1. **Spike, a day or so.** An empty mod built by Stonecutter for `1.20.1-forge` (ModDevGradle

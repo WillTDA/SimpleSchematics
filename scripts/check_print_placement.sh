@@ -19,14 +19,16 @@ mkdir -p "$out"
 # The node's compiled classes and resources are already on the written classpath.
 classpath="$(paste -sd: "$classpath_file")"
 
-"$javac" --release 17 -proc:none -classpath "$classpath" -d "$out" \
+"$javac" --release 17 -encoding UTF-8 -proc:none -classpath "$classpath" -d "$out" \
     scripts/PrintPlacementTest.java scripts/CreativePrintTest.java scripts/PrintBudgetTest.java \
-    scripts/PrintTestBootstrap.java scripts/ConfigPersistenceTest.java scripts/PrintPlanTest.java
+    scripts/PrintTestBootstrap.java scripts/ConfigPersistenceTest.java scripts/PrintPlanTest.java \
+    scripts/ConfigFileTest.java
 
 cd "$out"
 for test in dev.willtda.simpleschematics.printing.PrintPlacementTest \
         dev.willtda.simpleschematics.printing.CreativePrintTest PrintBudgetTest \
         dev.willtda.simpleschematics.printing.ConfigPersistenceTest \
-        dev.willtda.simpleschematics.printing.PrintPlanTest; do
-    "$java" -classpath "$out:$classpath" "$test"
+        dev.willtda.simpleschematics.printing.PrintPlanTest \
+        dev.willtda.simpleschematics.config.ConfigFileTest; do
+    "$java" -classpath "$out:$classpath" "$test" "$root"
 done

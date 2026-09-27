@@ -7,8 +7,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.client.gui.overlay.ForgeGui;
-import net.minecraftforge.client.gui.overlay.IGuiOverlay;
 
 /**
  * The panel that says what is still to place for the layer in front of you.
@@ -16,15 +14,15 @@ import net.minecraftforge.client.gui.overlay.IGuiOverlay;
  * <p>Drawn after the resource list so that, when both are sent to the same
  * corner, this one stacks past it rather than over it.</p>
  */
-public final class BuildListOverlay implements IGuiOverlay {
+public final class BuildListOverlay {
 
     public static final BuildListOverlay INSTANCE = new BuildListOverlay();
 
     private BuildListOverlay() {
     }
 
-    @Override
-    public void render(ForgeGui gui, GuiGraphics graphics, float partialTick, int screenWidth, int screenHeight) {
+    /** Drawn by the loader's hud layer, above the hotbar. */
+    public void render(GuiGraphics graphics, float partialTick, int screenWidth, int screenHeight) {
         Minecraft mc = Minecraft.getInstance();
         ClientState state = ClientState.INSTANCE;
 

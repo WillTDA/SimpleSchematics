@@ -26,8 +26,6 @@ import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.minecraftforge.client.event.RenderLevelStageEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
 import org.joml.Matrix4f;
 
 import java.util.HashMap;
@@ -64,11 +62,11 @@ public final class WorldRenderer {
      * gave it. AFTER_LEVEL is no use here, because Forge hands that stage the
      * projection pose rather than the level's camera pose.</p>
      */
-    @SubscribeEvent
-    public static void onRenderLevel(RenderLevelStageEvent event) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_WEATHER) {
-            return;
-        }
+    /**
+     * Draws the holograms and the scan selection. The loader calls this once a
+     * frame after the weather, which is after the clouds and the translucent pass.
+     */
+    public static void render(PoseStack pose, Matrix4f projection, net.minecraft.client.Camera view) {
         Minecraft mc = Minecraft.getInstance();
         ClientState state = ClientState.INSTANCE;
         if (mc.level == null || mc.player == null || !state.isEnabled() || mc.options.hideGui) {
@@ -81,9 +79,7 @@ public final class WorldRenderer {
             return;
         }
 
-        Vec3 camera = event.getCamera().getPosition();
-        PoseStack pose = event.getPoseStack();
-        Matrix4f projection = event.getProjectionMatrix();
+        Vec3 camera = view.getPosition();
 
         PoseStack modelView = RenderSystem.getModelViewStack();
         modelView.pushPose();

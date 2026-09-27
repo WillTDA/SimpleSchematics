@@ -33,9 +33,6 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import net.minecraftforge.client.event.InputEvent;
-import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -74,22 +71,21 @@ public final class InputHandler {
     /**
      * Runs before the keys reach anything else, which is what lets a chord take
      * a key back off vanilla. M and T would otherwise open the chat window on
-     * the way past.
+     * the way past. The loader calls this for every raw key event.
      */
-    @SubscribeEvent
-    public static void onKey(InputEvent.Key event) {
+    public static void onKey(int keyCode, int scanCode, int action) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.screen != null || mc.player == null || mc.level == null) {
             menuHeld = false;
             return;
         }
-        InputConstants.Key pressed = InputConstants.getKey(event.getKey(), event.getScanCode());
+        InputConstants.Key pressed = InputConstants.getKey(keyCode, scanCode);
         if (pressed.equals(InputConstants.UNKNOWN)) {
             return;
         }
 
         if (Keybinds.MENU.isActiveAndMatches(pressed)) {
-            onMenuKey(mc, event.getAction());
+            onMenuKey(mc, action);
             // Anything else bound to this key keeps its press unless we are
             // claiming it, which is the escape hatch for a minimap on the same
             // key. Chord keys below are always taken, or M and T opens chat.
@@ -104,7 +100,7 @@ public final class InputHandler {
         if (menuHeld && !isMenuKeyDown(mc)) {
             menuHeld = false;
         }
-        if (!menuHeld || event.getAction() != InputConstants.PRESS) {
+        if (!menuHeld || action != InputConstants.PRESS) {
             return;
         }
         for (KeyMapping chord : Keybinds.chords()) {
@@ -169,7 +165,7 @@ public final class InputHandler {
         } else if (chord == Keybinds.TOGGLE_BOX) {
             boolean on = !SSConfig.INSTANCE.hologramOutline.get();
             SSConfig.INSTANCE.hologramOutline.set(on);
-            SSConfig.SPEC.save();
+            SSConfig.FILE.save();
             Feedback.state(Component.translatable("simpleschematics.feedback.outline"), on);
         } else if (chord == Keybinds.HIGHLIGHT) {
             boolean on = SchematicVerifier.INSTANCE.toggle();
@@ -198,16 +194,15 @@ public final class InputHandler {
 
     // ---- scrolling --------------------------------------------------------
 
-    @SubscribeEvent
-    public static void onScroll(InputEvent.MouseScrollingEvent event) {
+    /** @return true to keep the scroll from reaching vanilla */
+    public static boolean onScroll(double raw) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.screen != null || mc.player == null) {
-            return;
+            return false;
         }
 
-        double raw = event.getScrollDelta();
         if (raw == 0.0D) {
-            return;
+            return false;
         }
 
         boolean ctrl = Screen.hasControlDown();
@@ -217,15 +212,14 @@ public final class InputHandler {
         // to work while the mod is off. Holding the activation item is all it asks.
         if (ctrl && shift) {
             if (!STATE.holdingActivationItem()) {
-                return;
+                return false;
             }
             announceMod(STATE.toggleEnabled());
-            event.setCanceled(true);
-            return;
+            return true;
         }
 
         if (!STATE.shortcutsActive()) {
-            return;
+            return false;
         }
 
         int direction = raw > 0 ? 1 : -1;
@@ -235,14 +229,14 @@ public final class InputHandler {
 
         if (ctrl) {
             STATE.setMode(direction > 0 ? STATE.mode().next() : STATE.mode().previous());
-            event.setCanceled(true);
-            return;
+            return true;
         }
 
         if (shift && STATE.mode() != EditMode.SCAN) {
             stepLayer(direction);
-            event.setCanceled(true);
+            return true;
         }
+        return false;
     }
 
     private static void stepLayer(int direction) {
@@ -281,13 +275,17 @@ public final class InputHandler {
 
     // ---- clicks -----------------------------------------------------------
 
-    @SubscribeEvent
-    public static void onInteraction(InputEvent.InteractionKeyMappingTriggered event) {
+    /**
+     * The use or attack key, before vanilla acts on it.
+     *
+     * @return true to stop vanilla acting on it and to keep the arm from swinging
+     */
+    public static boolean onInteraction(boolean use, boolean attack) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.screen != null) {
-            return;
+            return false;
         }
-        if (event.isUseItem()) {
+        if (use) {
             // Clicking anything that is not a block clears it rather than
             // leaving it set, so a villager opened straight after a chest
             // cannot have its trades recorded into that chest's bank.
@@ -298,7 +296,7 @@ public final class InputHandler {
             lastUsedAge = 0;
         }
         if (!STATE.isEnabled() || !STATE.isHoldingTool()) {
-            return;
+            return false;
         }
 
         if (STATE.mode() == EditMode.SCAN) {
@@ -306,20 +304,18 @@ public final class InputHandler {
             // click places and a left click takes away. The setting turns
             // them round for anyone who would rather it went the other way.
             boolean swapped = SSConfig.INSTANCE.swapScanCorners.get();
-            if (event.isUseItem()) {
+            if (use) {
                 setCorner(!swapped);
-                event.setSwingHand(false);
-                event.setCanceled(true);
-            } else if (event.isAttack()) {
+                return true;
+            } else if (attack) {
                 setCorner(swapped);
-                event.setSwingHand(false);
-                event.setCanceled(true);
+                return true;
             }
-            return;
+            return false;
         }
 
-        if (!event.isUseItem()) {
-            return;
+        if (!use) {
+            return false;
         }
 
         // Ctrl, alt and right click on a block says it is fine as it is,
@@ -330,9 +326,7 @@ public final class InputHandler {
                 useArmed = false;
                 toggleAccepted(mc);
             }
-            event.setSwingHand(false);
-            event.setCanceled(true);
-            return;
+            return true;
         }
 
         // Shift and right click on a chest hands it to the build you have
@@ -344,9 +338,7 @@ public final class InputHandler {
                     useArmed = false;
                     toggleBank(mc, looking);
                 }
-                event.setSwingHand(false);
-                event.setCanceled(true);
-                return;
+                return true;
             }
         }
 
@@ -355,16 +347,15 @@ public final class InputHandler {
                 useArmed = false;
                 commitPending();
             }
-            event.setSwingHand(false);
-            event.setCanceled(true);
+            return true;
         } else if (STATE.mode() == EditMode.PRINT) {
             if (useArmed) {
                 useArmed = false;
                 PrintManager.INSTANCE.toggle();
             }
-            event.setSwingHand(false);
-            event.setCanceled(true);
+            return true;
         }
+        return false;
     }
 
     /**
@@ -731,11 +722,8 @@ public final class InputHandler {
 
     // ---- keybinds ---------------------------------------------------------
 
-    @SubscribeEvent
-    public static void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) {
-            return;
-        }
+    /** Once a client tick, at its end. */
+    public static void onClientTick() {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) {
             return;

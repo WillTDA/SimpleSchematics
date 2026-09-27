@@ -1,8 +1,9 @@
 package dev.willtda.simpleschematics.printing;
 
+import dev.willtda.simpleschematics.client.InputHandler;
 import dev.willtda.simpleschematics.placement.Placement;
 import dev.willtda.simpleschematics.placement.PlacementManager;
-import dev.willtda.simpleschematics.client.InputHandler;
+import dev.willtda.simpleschematics.platform.Platform;
 import dev.willtda.simpleschematics.resource.Banks;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -85,7 +86,7 @@ final class PrintInventory {
     }
 
     static boolean reachable(Minecraft mc, BlockPos pos) {
-        double range = mc.player.getBlockReach();
+        double range = Platform.blockReach(mc.player);
         return mc.player.getEyePosition().distanceToSqr(Vec3.atCenterOf(pos)) <= range * range;
     }
 

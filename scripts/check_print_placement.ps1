@@ -22,10 +22,10 @@ try {
     # The node's compiled classes and resources are already on the written classpath.
     $classpath = ((Get-Content -LiteralPath $ClasspathFile) -join ';').Replace('\', '/')
     $utf8 = [System.Text.UTF8Encoding]::new($false)
-    $compileArguments = @('--release', '17', '-proc:none', '-classpath', ('"' + $classpath + '"'), '-d',
+    $compileArguments = @('--release', '17', '-encoding', 'UTF-8', '-proc:none', '-classpath', ('"' + $classpath + '"'), '-d',
         ('"' + $outputDirectory.Replace('\', '/') + '"'), 'scripts/PrintPlacementTest.java',
         'scripts/CreativePrintTest.java', 'scripts/PrintBudgetTest.java', 'scripts/PrintTestBootstrap.java',
-        'scripts/ConfigPersistenceTest.java', 'scripts/PrintPlanTest.java')
+        'scripts/ConfigPersistenceTest.java', 'scripts/PrintPlanTest.java', 'scripts/ConfigFileTest.java')
     $compileFile = Join-Path $outputDirectory 'compile.args'
     [System.IO.File]::WriteAllLines($compileFile, $compileArguments, $utf8)
     & $javaCompiler "@$compileFile"
@@ -35,8 +35,10 @@ try {
     foreach ($testClass in @('dev.willtda.simpleschematics.printing.PrintPlacementTest',
             'dev.willtda.simpleschematics.printing.CreativePrintTest', 'PrintBudgetTest',
             'dev.willtda.simpleschematics.printing.ConfigPersistenceTest',
-            'dev.willtda.simpleschematics.printing.PrintPlanTest')) {
-        $runArguments = @('-classpath', ('"' + $outputDirectory.Replace('\', '/') + ';' + $classpath + '"'), $testClass)
+            'dev.willtda.simpleschematics.printing.PrintPlanTest',
+            'dev.willtda.simpleschematics.config.ConfigFileTest')) {
+        $runArguments = @('-classpath', ('"' + $outputDirectory.Replace('\', '/') + ';' + $classpath + '"'), $testClass,
+            ('"' + $repositoryRoot.Replace('\', '/') + '"'))
         $runFile = Join-Path $outputDirectory 'run.args'
         [System.IO.File]::WriteAllLines($runFile, $runArguments, $utf8)
         & $javaRuntime "@$runFile"

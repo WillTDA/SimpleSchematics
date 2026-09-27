@@ -1,10 +1,10 @@
 package dev.willtda.simpleschematics.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import dev.willtda.simpleschematics.platform.Platform;
 import net.minecraft.client.KeyMapping;
-import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
-import net.minecraftforge.client.settings.KeyConflictContext;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -60,7 +60,7 @@ public final class Keybinds {
     }
 
     private static KeyMapping key(String name, int code) {
-        return new KeyMapping(name, KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, code, CATEGORY);
+        return Platform.inGameKey(name, code, CATEGORY);
     }
 
     /** The keys that only mean something while {@link #MENU} is held. */
@@ -78,13 +78,12 @@ public final class Keybinds {
         return CHORDS.contains(mapping);
     }
 
-    public static void register(RegisterKeyMappingsEvent event) {
-        event.register(MENU);
-        for (KeyMapping mapping : CHORDS) {
-            event.register(mapping);
-        }
-        for (KeyMapping mapping : PLAIN) {
-            event.register(mapping);
-        }
+    /** Every key, in the order the loader registers them in the Controls screen. */
+    public static List<KeyMapping> all() {
+        List<KeyMapping> all = new ArrayList<>();
+        all.add(MENU);
+        all.addAll(CHORDS);
+        all.addAll(PLAIN);
+        return all;
     }
 }

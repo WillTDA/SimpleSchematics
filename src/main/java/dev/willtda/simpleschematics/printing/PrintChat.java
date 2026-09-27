@@ -1,12 +1,7 @@
 package dev.willtda.simpleschematics.printing;
 
-import dev.willtda.simpleschematics.SimpleSchematics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.contents.TranslatableContents;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.event.ClientChatReceivedEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
 
 import java.util.Set;
 
@@ -24,7 +19,6 @@ import java.util.Set;
  * That is sent to them, not to this client, so it cannot be filtered here;
  * fewer commands, through larger fills, is what keeps it down.</p>
  */
-@Mod.EventBusSubscriber(modid = SimpleSchematics.MOD_ID, value = Dist.CLIENT)
 public final class PrintChat {
 
     private static final long QUIET_MILLIS = 10_000L;
@@ -78,20 +72,24 @@ public final class PrintChat {
         quietUntil = 0;
     }
 
-    @SubscribeEvent
-    public static void onSystemChat(ClientChatReceivedEvent.System event) {
-        if (event.isOverlay() || System.currentTimeMillis() > quietUntil) {
-            return;
+    /**
+     * Asked by the loader for every system message before it reaches chat.
+     *
+     * @return true to keep it out of chat
+     */
+    public static boolean shouldHide(Component message, boolean overlay) {
+        if (overlay || System.currentTimeMillis() > quietUntil) {
+            return false;
         }
-        TranslatableContents reply = translatable(event.getMessage(), 0);
+        TranslatableContents reply = translatable(message, 0);
         if (reply == null) {
-            return;
+            return false;
         }
         String key = reply.getKey();
         if (ROUTINE.contains(key)) {
-            event.setCanceled(true);
-        } else if (REFUSED.contains(key)) {
-            event.setCanceled(true);
+            return true;
+        }
+        if (REFUSED.contains(key)) {
             // A fill that was too large is retried smaller, and the context line
             // repeats the error before it, so neither counts as a refusal.
             if (!key.equals("command.context.here") && !key.equals("commands.fill.toobig")) {
@@ -100,7 +98,9 @@ public final class PrintChat {
             if (key.equals("commands.fill.toobig") && reply.getArgs().length > 0) {
                 learnLimit(reply.getArgs()[0]);
             }
+            return true;
         }
+        return false;
     }
 
     /** Failures arrive wrapped in an empty red component, so the key can sit one level down. */

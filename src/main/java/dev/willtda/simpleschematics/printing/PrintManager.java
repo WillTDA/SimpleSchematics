@@ -243,7 +243,7 @@ public final class PrintManager {
             if (choice == PrintConfirmScreen.Choice.PRINT_AND_SILENCE) {
                 SSConfig.INSTANCE.printWarnSurvival.set(false);
                 SSConfig.INSTANCE.printWarnMissing.set(false);
-                SSConfig.SPEC.save();
+                SSConfig.FILE.save();
             }
             begin(mc, null, agreement);
         }));

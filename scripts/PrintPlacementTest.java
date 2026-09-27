@@ -1,6 +1,5 @@
 package dev.willtda.simpleschematics.printing;
 
-import com.electronwill.nightconfig.core.CommentedConfig;
 import dev.willtda.simpleschematics.config.SSConfig;
 import dev.willtda.simpleschematics.resource.MaterialResolver;
 
@@ -24,9 +23,6 @@ public final class PrintPlacementTest {
 
     public static void main(String[] args) {
         PrintTestBootstrap.initialise();
-        CommentedConfig config = CommentedConfig.inMemory();
-        SSConfig.SPEC.correct(config);
-        SSConfig.SPEC.setConfig(config);
         SSConfig.INSTANCE.strictStateMatch.set(false);
 
         BlockState slab = Blocks.OAK_SLAB.defaultBlockState();

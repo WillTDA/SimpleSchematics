@@ -1,35 +1,27 @@
 package dev.willtda.simpleschematics.printing;
 
+import dev.willtda.simpleschematics.mixin.BlockStatePredictionHandlerAccessor;
+import dev.willtda.simpleschematics.mixin.ClientLevelAccessor;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.multiplayer.prediction.BlockStatePredictionHandler;
 import net.minecraft.core.BlockPos;
-import net.minecraftforge.fml.util.ObfuscationReflectionHelper;
-
-import java.lang.reflect.Field;
 
 /** A predicted client block is not a completed placement until vanilla clears its acknowledgement. */
 final class PrintAcknowledgement {
-    private static final Field HANDLER = ObfuscationReflectionHelper.findField(ClientLevel.class, "f_233599_");
-    private static final Field PENDING = ObfuscationReflectionHelper.findField(BlockStatePredictionHandler.class, "f_233851_");
 
     private PrintAcknowledgement() { }
 
     static boolean pending(ClientLevel level, BlockPos pos) {
-        try {
-            return ((Long2ObjectMap<?>) PENDING.get(HANDLER.get(level))).containsKey(pos.asLong());
-        } catch (IllegalAccessException exception) {
-            // Fail closed: the manager times out without spending more materials.
-            return true;
-        }
+        return predictions(level).containsKey(pos.asLong());
     }
 
     /** Whether any block anywhere is still showing a guess the server has not answered. */
     static boolean any(ClientLevel level) {
-        try {
-            return !((Long2ObjectMap<?>) PENDING.get(HANDLER.get(level))).isEmpty();
-        } catch (IllegalAccessException exception) {
-            return true;
-        }
+        return !predictions(level).isEmpty();
+    }
+
+    private static Long2ObjectMap<?> predictions(ClientLevel level) {
+        return ((BlockStatePredictionHandlerAccessor) ((ClientLevelAccessor) level).simpleschematics$predictions())
+                .simpleschematics$pending();
     }
 }

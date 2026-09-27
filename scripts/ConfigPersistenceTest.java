@@ -1,6 +1,5 @@
 package dev.willtda.simpleschematics.printing;
 
-import com.electronwill.nightconfig.core.file.CommentedFileConfig;
 import dev.willtda.simpleschematics.client.ClientState;
 import dev.willtda.simpleschematics.client.EditMode;
 import dev.willtda.simpleschematics.config.SSConfig;
@@ -12,7 +11,7 @@ import net.minecraft.core.BlockPos;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-/** Exercises real TOML saves/reloads and the same session reset used when leaving a world. */
+/** Exercises real saves and reloads of the settings file and the session reset used when leaving a world. */
 public final class ConfigPersistenceTest {
     private static int checks;
 
@@ -23,7 +22,8 @@ public final class ConfigPersistenceTest {
         SSConfig config = SSConfig.INSTANCE;
         ClientState state = ClientState.INSTANCE;
         SchematicVerifier verifier = SchematicVerifier.INSTANCE;
-        try (CommentedFileConfig saved = open(file)) {
+        {
+            SSConfig.FILE.load(file);
             config.dataDirectory.set(folder.toString());
             config.actionBarFeedback.set(false);
             check(state.renderHolograms(), "Old configs must retain the default hologram visibility");
@@ -39,11 +39,8 @@ public final class ConfigPersistenceTest {
             config.printSource.set(SSConfig.PrintSource.LINKED_CHESTS);
             config.printDelay.set(9);
             // Settings may save before any world tick has had a chance to flush the mode.
-            SSConfig.SPEC.save();
-            try (CommentedFileConfig disk = CommentedFileConfig.of(file)) {
-                disk.load();
-                check("PRINT".equals(disk.get("general.lastMode")), "Title-screen mode changes must reach the saved file");
-            }
+            SSConfig.FILE.save();
+            check(Files.readString(file).contains("\tlastMode = \"PRINT\"\n"), "Title-screen mode changes must reach the saved file");
             state.flushMode();
             state.reset();
             verifier.clear();
@@ -51,7 +48,8 @@ public final class ConfigPersistenceTest {
             check(!state.isEnabled(), "World exit must not switch the mod on");
             check(!verifier.isEnabled(), "Clearing world verification must not enable highlights");
         }
-        try (CommentedFileConfig reloaded = open(file)) {
+        {
+            SSConfig.FILE.load(file);
             check(!state.renderHolograms(), "Hologram visibility survives TOML reload");
             check(!state.isEnabled(), "Mod enabled state survives TOML reload");
             check(!verifier.isEnabled(), "Highlight visibility survives TOML reload");
@@ -80,14 +78,6 @@ public final class ConfigPersistenceTest {
             check(state.resourceListVisible() && state.buildListVisible(), "World reset must not overwrite selected placement preferences");
         }
         System.out.println("Config persistence checks passed: " + checks);
-    }
-
-    private static CommentedFileConfig open(Path file) {
-        CommentedFileConfig config = CommentedFileConfig.builder(file).sync().build();
-        config.load();
-        SSConfig.SPEC.correct(config);
-        SSConfig.SPEC.setConfig(config);
-        return config;
     }
 
     private static void check(boolean condition, String message) {

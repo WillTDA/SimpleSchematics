@@ -59,9 +59,11 @@ Useful paths: `run/logs/latest.log`, `run/crash-reports/`, `run/config/simplesch
 | Package | What lives there |
 | --- | --- |
 | `client` | Input, keybinds, mode and session state, action bar feedback |
-| `config` | `SSConfig` (ForgeConfigSpec) and the settings screen |
+| `config` | `SSConfig`, the `ConfigFile` it is stored in, and the settings screen |
 | `gui` | Library, resource list, save dialogue, 3D preview widget |
+| `mixin` | Accessors for the three private vanilla members the printer reads |
 | `placement` | A schematic positioned in a world, and their persistence |
+| `platform` | Everything loader specific: `Platform` services, and one listener class per loader |
 | `render` | Baked hologram geometry, the ghost shader, world drawing, verification |
 | `resource` | Material counting, the corner overlay, chest banks |
 | `schematic` | The native `.sschem` format, Litematica import, the library |
@@ -69,6 +71,28 @@ Useful paths: `run/logs/latest.log`, `run/crash-reports/`, `run/config/simplesch
 
 `scripts/` holds standalone checks that are compiled and run by hand, not part of the
 Gradle build. `:1.20.1-forge:writePrintTestClasspath` writes the classpath they need.
+
+## Loaders
+
+Shared code imports nothing from a loader. What it needs from one goes through
+`platform/Platform` (game and config folders, in-game key mappings, block reach), and every
+event and registration lives in one listener class per loader, `platform/forge/ForgeClient`
+today, which only calls through to shared methods such as `InputHandler.onKey`,
+`InputHandler.onInteraction` (returns true to take the click), `WorldRenderer.render`,
+`PrintChat.shouldHide` and the `SimpleSchematicsClient` lifecycle hooks. Add a behaviour
+to the shared method, never to the listener.
+
+- **Two Forge-family imports stay in shared code on purpose**: `ModelData` and the
+  `getRenderTypes`/`tesselateBlock` overloads that take it, in `BakedSchematic`. NeoForge keeps
+  the same API under `net.neoforged.neoforge`, so the port swaps the package rather than the code.
+- **Private vanilla members are reached through the accessors in `mixin`**, never by
+  reflection on an obfuscated name. The Mixin annotation processor writes the refmap that
+  turns their Mojang names into SRG for the Forge jar.
+- **Settings are the mod's own file** (`ConfigFile`), in the TOML layout Forge's config spec
+  wrote, so an old `simpleschematics-client.toml` loads unchanged; `ConfigFileTest` checks a
+  Forge-written copy round trips byte for byte. It is read by the platform on startup and
+  again whenever it changes on disk, checked once a second. Call `SSConfig.FILE.save()` after
+  changing a value.
 
 ## Rendering traps
 
@@ -129,9 +153,9 @@ later passes read the depth buffer back and paint sky over anything that left no
 
 Keybinds follow Litematica: `M` alone opens the library, `M` held is a prefix for
 chords (`M`+`P`, `M`+`L`, `M`+`T`, and so on). Forge's `KeyMapping` has no concept of
-chords, so `InputHandler.onKey` matches them on the raw `InputEvent.Key`.
+chords, so `InputHandler.onKey` matches them on the raw key event the loader hands over.
 
-- **`InputEvent.Key` fires even when a screen is open.** Guard on `mc.screen == null`.
+- **The raw key event fires even when a screen is open.** Guard on `mc.screen == null`.
 - **The click is already recorded by the time Forge tells you about it.** Cancelling is
   not possible; `swallow()` drains the pending click from every binding that wanted the
   key. This is what stops `M`+`T` also opening chat.

@@ -59,7 +59,7 @@ public final class ClientState {
 
     public void setEnabled(boolean value) {
         SSConfig.INSTANCE.enabledOnLaunch.set(value);
-        SSConfig.SPEC.save();
+        SSConfig.FILE.save();
         if (!value) {
             PrintManager.INSTANCE.pause();
         }
@@ -100,7 +100,7 @@ public final class ClientState {
 
     public boolean toggleRenderHolograms() {
         SSConfig.INSTANCE.renderHolograms.set(!renderHolograms());
-        SSConfig.SPEC.save();
+        SSConfig.FILE.save();
         return renderHolograms();
     }
 
@@ -160,7 +160,7 @@ public final class ClientState {
         }
         modeDirty = false;
         SSConfig.INSTANCE.lastMode.set(mode.name());
-        SSConfig.SPEC.save();
+        SSConfig.FILE.save();
     }
 
     // ---- selection --------------------------------------------------------
@@ -401,7 +401,7 @@ public final class ClientState {
         if (visible) {
             if (!SSConfig.INSTANCE.resourceListEnabled.get()) {
                 SSConfig.INSTANCE.resourceListEnabled.set(true);
-                SSConfig.SPEC.save();
+                SSConfig.FILE.save();
             }
             ResourceListManager.INSTANCE.refreshNow();
         }
@@ -415,7 +415,7 @@ public final class ClientState {
             PlacementManager.INSTANCE.markDirty();
         } else {
             SSConfig.INSTANCE.resourceListVisible.set(visible);
-            SSConfig.SPEC.save();
+            SSConfig.FILE.save();
         }
     }
 
@@ -443,7 +443,7 @@ public final class ClientState {
         setBuildListVisible(visible);
         if (visible && !SSConfig.INSTANCE.buildListEnabled.get()) {
             SSConfig.INSTANCE.buildListEnabled.set(true);
-            SSConfig.SPEC.save();
+            SSConfig.FILE.save();
         }
         return visible;
     }
@@ -455,7 +455,7 @@ public final class ClientState {
             PlacementManager.INSTANCE.markDirty();
         } else {
             SSConfig.INSTANCE.buildListVisible.set(visible);
-            SSConfig.SPEC.save();
+            SSConfig.FILE.save();
         }
     }
 
